@@ -1,0 +1,82 @@
+{
+  "projectType": "framework",
+  "projectName": "Flyway-JOOQ Convention Plugin",
+  "projectDescription": "A Gradle convention plugin for generating JOOQ classes from Flyway migrations using Testcontainers",
+  "theme": "aspen",
+  "primaryColor": "#242b2c",
+  "lightColor": "#040404",
+  "darkColor": "#6a6a6d",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Core Concepts",
+        "pages": [
+          "concepts/how-it-works",
+          "concepts/architecture",
+          "concepts/testcontainers"
+        ]
+      },
+      {
+        "group": "Configuration",
+        "pages": [
+          "configuration/overview",
+          "configuration/database-settings",
+          "configuration/jooq-settings"
+        ]
+      },
+      {
+        "group": "Tasks",
+        "pages": [
+          "tasks/setup-database",
+          "tasks/generate-jooq",
+          "tasks/stop-container"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/migration-setup",
+          "guides/custom-types",
+          "guides/troubleshooting"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/extension-api",
+          "reference/dependencies",
+          "reference/examples"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Automated PostgreSQL Testcontainer lifecycle management",
+    "Migration-based JOOQ code generation from Flyway SQL scripts",
+    "Opinionated Kotlin configuration with JSONB and INET type support",
+    "Automatic dependency injection for JOOQ, Flyway, and PostgreSQL",
+    "Gradle task integration with compileKotlin lifecycle"
+  ],
+  "publicApiSurface": [
+    "io.github.usmanzaheer1995.FlywayJooqConventionPlugin",
+    "jooqConventions extension block",
+    "jooqConventions.targetPackage",
+    "jooqConventions.postgresVersion",
+    "jooqConventions.databaseName",
+    "jooqConventions.username",
+    "jooqConventions.password",
+    "jooqConventions.inputSchema",
+    "jooqConventions.excludedTables",
+    "setupDatabaseForJooq task",
+    "generateJooq task",
+    "stopPostgresContainer task"
+  ]
+}
