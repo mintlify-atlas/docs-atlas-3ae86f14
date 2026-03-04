@@ -1,0 +1,438 @@
+---
+title: Examples
+description: Real-world examples of using the Flyway-JOOQ Convention Plugin
+---
+
+This page provides practical examples demonstrating various use cases and configurations for the plugin.
+
+## Basic Setup
+
+The simplest configuration uses all default values:
+
+```kotlin build.gradle.kts
+plugins {
+    id("io.github.usmanzaheer1995.flyway-jooq-convention-plugin") version "1.0.9"
+}
+
+// No additional configuration needed!
+// Uses defaults: testdb, public schema, postgres:16-alpine
+```
+
+With default settings:
+- Database: `testdb`
+- Schema: `public`
+- Username/Password: `test`/`test`
+- Generated package: `com.example.jooq.generated`
+- PostgreSQL version: `16-alpine`
+
+Then create your migrations in `src/main/resources/db/migration/`:
+
+```sql src/main/resources/db/migration/V1__create_users_table.sql
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+Generate JOOQ code:
+
+```bash
+./gradlew generateJooq
+```
+
+## Custom Configuration
+
+Customize the plugin for your project's needs:
+
+```kotlin build.gradle.kts
+plugins {
+    id("io.github.usmanzaheer1995.flyway-jooq-convention-plugin") version "1.0.9"
+}
+
+jooqConventions {
+    databaseName = "myapp_production"
+    username = "dbadmin"
+    password = "secure_pass_123"
+    postgresVersion = "15-alpine"
+    inputSchema = "myapp"
+    targetPackage = "io.mycompany.database.generated"
+    excludedTables = "flyway_schema_history|audit_log|.*_temp"
+}
+```
+
+With multiple migration files:
+
+```sql src/main/resources/db/migration/V1__initial_schema.sql
+CREATE SCHEMA myapp;
+
+CREATE TABLE myapp.users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) NOT NULL UNIQUE,
+    full_name VARCHAR(255) NOT NULL
+);
+```
+
+```sql src/main/resources/db/migration/V2__add_orders_table.sql
+CREATE TABLE myapp.orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES myapp.users(id),
+    total_amount DECIMAL(10, 2) NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+## Using Generated Code
+
+After running `generateJooq`, use the generated classes in your application:
+
+```kotlin src/main/kotlin/io/mycompany/UserRepository.kt
+import io.mycompany.database.generated.Tables.USERS
+import io.mycompany.database.generated.tables.records.UsersRecord
+import org.jooq.DSLContext
+import org.jooq.impl.DSL
+import java.util.UUID
+
+class UserRepository(private val dsl: DSLContext) {
+    
+    fun findById(userId: UUID): UsersRecord? {
+        return dsl.selectFrom(USERS)
+            .where(USERS.ID.eq(userId))
+            .fetchOne()
+    }
+    
+    fun findByEmail(email: String): UsersRecord? {
+        return dsl.selectFrom(USERS)
+            .where(USERS.EMAIL.eq(email))
+            .fetchOne()
+    }
+    
+    fun create(email: String, fullName: String): UsersRecord {
+        return dsl.insertInto(USERS)
+            .set(USERS.EMAIL, email)
+            .set(USERS.FULL_NAME, fullName)
+            .returning()
+            .fetchOne()!!
+    }
+    
+    fun listAll(): List<UsersRecord> {
+        return dsl.selectFrom(USERS)
+            .fetch()
+    }
+}
+```
+
+## Multiple Schemas
+
+While the plugin currently supports one schema at a time, you can work with multiple schemas by configuring JOOQ to include them:
+
+```kotlin build.gradle.kts
+plugins {
+    id("io.github.usmanzaheer1995.flyway-jooq-convention-plugin") version "1.0.9"
+}
+
+jooqConventions {
+    databaseName = "multi_schema_app"
+    inputSchema = "public"
+    targetPackage = "com.example.database.generated"
+}
+```
+
+Create migrations for multiple schemas:
+
+```sql src/main/resources/db/migration/V1__create_schemas.sql
+CREATE SCHEMA IF NOT EXISTS auth;
+CREATE SCHEMA IF NOT EXISTS billing;
+
+-- Public schema tables
+CREATE TABLE public.products (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    price DECIMAL(10, 2) NOT NULL
+);
+
+-- Auth schema tables
+CREATE TABLE auth.users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL
+);
+
+-- Billing schema tables
+CREATE TABLE billing.invoices (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES auth.users(id),
+    amount DECIMAL(10, 2) NOT NULL
+);
+```
+
+<Note>
+  When using multiple schemas, JOOQ will generate code for tables in the `inputSchema` only by default. To include other schemas, you'll need to reference them explicitly or adjust the schema configuration.
+</Note>
+
+## Excluding Tables
+
+Exclude specific tables from code generation using regex patterns:
+
+```kotlin build.gradle.kts
+jooqConventions {
+    // Exclude Flyway history, audit tables, and temporary tables
+    excludedTables = "flyway_schema_history|audit_.*|.*_temp|.*_backup"
+}
+```
+
+With migrations like:
+
+```sql src/main/resources/db/migration/V1__create_tables.sql
+-- This will be included in generated code
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL
+);
+
+-- This will be excluded (matches audit_* pattern)
+CREATE TABLE audit_log (
+    id SERIAL PRIMARY KEY,
+    table_name VARCHAR(255),
+    action VARCHAR(50),
+    changed_at TIMESTAMP DEFAULT NOW()
+);
+
+-- This will be excluded (matches *_temp pattern)
+CREATE TABLE import_temp (
+    id SERIAL PRIMARY KEY,
+    data TEXT
+);
+```
+
+Only the `users` table will have generated JOOQ classes.
+
+## Different PostgreSQL Versions
+
+Test against different PostgreSQL versions:
+
+```kotlin build.gradle.kts
+jooqConventions {
+    // Use PostgreSQL 17 (latest)
+    postgresVersion = "17-alpine"
+    
+    // Or use PostgreSQL 14
+    // postgresVersion = "14-alpine"
+    
+    // Or use specific patch version
+    // postgresVersion = "16.3-alpine"
+    
+    // Or use non-Alpine (larger but may include more features)
+    // postgresVersion = "16"
+}
+```
+
+<Tip>
+  Alpine variants (e.g., `16-alpine`) are recommended as they're smaller and faster to download. Use the same major version as your production database.
+</Tip>
+
+## Integrating with Existing Projects
+
+Add the plugin to an existing Kotlin + PostgreSQL project:
+
+### Step 1: Add the Plugin
+
+```kotlin build.gradle.kts
+plugins {
+    kotlin("jvm") version "2.3.10"
+    id("io.github.usmanzaheer1995.flyway-jooq-convention-plugin") version "1.0.9"
+}
+
+repositories {
+    mavenCentral()
+}
+```
+
+### Step 2: Configure for Your Database
+
+```kotlin build.gradle.kts
+jooqConventions {
+    databaseName = "existing_db_name"
+    inputSchema = "public"  // or your schema name
+    targetPackage = "com.existing.project.database.generated"
+}
+```
+
+### Step 3: Move Existing Migrations
+
+Ensure your migrations are in the correct location:
+
+```
+src/
+└── main/
+    └── resources/
+        └── db/
+            └── migration/
+                ├── V1__initial_schema.sql
+                ├── V2__add_users.sql
+                └── V3__add_orders.sql
+```
+
+### Step 4: Generate Code
+
+```bash
+./gradlew generateJooq
+```
+
+### Step 5: Update Your Code
+
+Replace raw JDBC or other database access with JOOQ:
+
+```kotlin
+// Before: Raw JDBC
+val stmt = connection.prepareStatement("SELECT * FROM users WHERE id = ?")
+stmt.setInt(1, userId)
+val rs = stmt.executeQuery()
+
+// After: Type-safe JOOQ
+val user = dsl.selectFrom(USERS)
+    .where(USERS.ID.eq(userId))
+    .fetchOne()
+```
+
+## Working with JSON Columns
+
+The plugin automatically configures JSONB columns to be treated as VARCHAR in JOOQ:
+
+```sql src/main/resources/db/migration/V1__create_products.sql
+CREATE TABLE products (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    metadata JSONB,
+    settings JSONB DEFAULT '{}'::jsonb
+);
+```
+
+Access JSONB fields in Kotlin:
+
+```kotlin
+import com.example.jooq.generated.Tables.PRODUCTS
+import org.jooq.DSLContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class ProductMetadata(
+    val brand: String,
+    val category: String
+)
+
+class ProductRepository(private val dsl: DSLContext) {
+    
+    fun create(name: String, metadata: ProductMetadata): Int {
+        val metadataJson = Json.encodeToString(
+            ProductMetadata.serializer(), 
+            metadata
+        )
+        
+        return dsl.insertInto(PRODUCTS)
+            .set(PRODUCTS.NAME, name)
+            .set(PRODUCTS.METADATA, metadataJson)
+            .returning(PRODUCTS.ID)
+            .fetchOne()!!
+            .id!!
+    }
+    
+    fun getMetadata(productId: Int): ProductMetadata? {
+        val json = dsl.select(PRODUCTS.METADATA)
+            .from(PRODUCTS)
+            .where(PRODUCTS.ID.eq(productId))
+            .fetchOne(PRODUCTS.METADATA)
+            
+        return json?.let {
+            Json.decodeFromString(ProductMetadata.serializer(), it)
+        }
+    }
+}
+```
+
+## Custom Generator Strategy
+
+While the plugin uses sensible defaults, you can access the underlying JOOQ configuration in `afterEvaluate`:
+
+```kotlin build.gradle.kts
+import nu.studer.gradle.jooq.JooqExtension
+
+plugins {
+    id("io.github.usmanzaheer1995.flyway-jooq-convention-plugin") version "1.0.9"
+}
+
+jooqConventions {
+    targetPackage = "com.example.database.generated"
+}
+
+// Customize JOOQ configuration further
+afterEvaluate {
+    configure<JooqExtension> {
+        configurations {
+            named("main") {
+                jooqConfiguration.apply {
+                    generator.apply {
+                        // Customize generation settings
+                        generate.apply {
+                            isJavaTimeTypes = true
+                            isDaos = true
+                            isInterfaces = true
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+<Warning>
+  Be careful when customizing the JOOQ configuration directly. Some settings may conflict with the plugin's defaults.
+</Warning>
+
+## Gradle Tasks
+
+The plugin provides these Gradle tasks:
+
+```bash
+# Generate JOOQ code from Flyway migrations
+./gradlew generateJooq
+
+# Setup database (starts container, runs migrations)
+./gradlew setupDatabaseForJooq
+
+# Stop PostgreSQL container
+./gradlew stopPostgresContainer
+
+# Clean generated code
+./gradlew clean
+```
+
+Tasks are automatically wired:
+- `generateJooq` depends on `setupDatabaseForJooq`
+- `generateJooq` is finalized by `stopPostgresContainer`
+- `compileKotlin` depends on `generateJooq`
+
+## Source Code References
+
+- Extension configuration: `FlywayJooqConventionPlugin.kt:215-223`
+- Dependency management: `FlywayJooqConventionPlugin.kt:32-43`
+- Task setup: `FlywayJooqConventionPlugin.kt:47-94`
+- JOOQ configuration: `FlywayJooqConventionPlugin.kt:96-161`
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Extension API" icon="gear" href="/reference/extension-api">
+    Complete API reference for all configuration options
+  </Card>
+  <Card title="Dependencies" icon="box" href="/reference/dependencies">
+    Learn about automatic dependency management
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get started from scratch
+  </Card>
+</CardGroup>

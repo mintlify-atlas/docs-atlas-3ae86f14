@@ -1,0 +1,105 @@
+---
+title: setupDatabaseForJooq Task
+description: Starts a PostgreSQL Testcontainer and runs Flyway migrations to prepare the database for JOOQ code generation
+---
+
+The `setupDatabaseForJooq` task is automatically registered by the plugin and prepares the database environment for JOOQ code generation. It starts a PostgreSQL container using Testcontainers and applies all Flyway migrations.
+
+## What It Does
+
+This task performs the following operations:
+
+1. **Starts PostgreSQL Container** - Launches a Testcontainers PostgreSQL instance with configured credentials
+2. **Runs Flyway Migrations** - Executes all migration scripts from `src/main/resources/db/migration`
+3. **Stores Connection Info** - Saves JDBC URL, username, and password for use by the `generateJooq` task
+
+## Task Implementation
+
+The task is registered in `FlywayJooqConventionPlugin.kt` (lines 47-81):
+
+```kotlin
+val setupDatabaseForJooq = tasks.register("setupDatabaseForJooq") {
+    group = "jooq"
+    description = "Starts PostgreSQL container and runs Flyway migrations for jOOQ generation"
+
+    doFirst {
+        println("Starting PostgreSQL container...")
+        postgresContainer = PostgreSQLContainer<Nothing>("postgres:${jooqConventions.postgresVersion}").apply {
+            withDatabaseName(jooqConventions.databaseName)
+            withUsername(jooqConventions.username)
+            withPassword(jooqConventions.password)
+            start()
+        }
+
+        containerJdbcUrl = postgresContainer!!.jdbcUrl
+        containerUsername = postgresContainer!!.username
+        containerPassword = postgresContainer!!.password
+
+        println("PostgreSQL container started: $containerJdbcUrl")
+        println("Running Flyway migrations...")
+
+        val migrationsDir = file("src/main/resources/db/migration")
+
+        val flyway = Flyway
+            .configure()
+            .dataSource(containerJdbcUrl, containerUsername, containerPassword)
+            .locations("filesystem:${migrationsDir.absolutePath}")
+            .load()
+
+        val result = flyway.migrate()
+        println("Flyway migrations completed: ${result.migrationsExecuted} migrations executed")
+    }
+}
+```
+
+## When It Runs
+
+The task executes automatically as a dependency of the `generateJooq` task. You typically don't need to run it manually, but it will execute:
+
+- **Before** `generateJooq` - Ensures the database schema is ready
+- **During build** - When `compileKotlin` triggers `generateJooq`
+
+## Manual Execution
+
+You can run the task manually if needed:
+
+```bash
+./gradlew setupDatabaseForJooq
+```
+
+## Output Messages
+
+When the task runs, you'll see output similar to:
+
+```
+> Task :setupDatabaseForJooq
+Starting PostgreSQL container...
+PostgreSQL container started: jdbc:postgresql://localhost:32768/testdb
+Running Flyway migrations...
+Flyway migrations completed: 5 migrations executed
+```
+
+## Configuration
+
+The task uses settings from the `jooqConventions` extension:
+
+- `postgresVersion` - PostgreSQL Docker image version (default: `"16-alpine"`)
+- `databaseName` - Database name to create (default: `"testdb"`)
+- `username` - Database username (default: `"test"`)
+- `password` - Database password (default: `"test"`)
+
+See [Configuration](/configuration/overview) for details on customizing these settings.
+
+## Migration Location
+
+The task reads Flyway migrations from:
+
+```
+src/main/resources/db/migration/
+```
+
+Ensure your SQL migration files are placed in this directory following Flyway naming conventions (e.g., `V1__initial_schema.sql`).
+
+## Container Lifecycle
+
+The PostgreSQL container remains running after this task completes. It will be stopped and cleaned up by the `stopPostgresContainer` task, which is automatically configured as a finalizer for `generateJooq`.

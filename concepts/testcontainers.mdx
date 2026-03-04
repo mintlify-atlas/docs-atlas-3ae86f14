@@ -1,0 +1,240 @@
+---
+title: Testcontainers integration
+description: Learn why Testcontainers powers the plugin's database provisioning and how it ensures reliable code generation
+---
+
+The Flyway-JOOQ Convention Plugin uses Testcontainers to provision ephemeral PostgreSQL databases for code generation. This approach eliminates manual database setup and ensures consistent, reproducible builds.
+
+## Why Testcontainers?
+
+Traditional JOOQ code generation requires a running database with your schema already applied. This creates several problems:
+
+- **Manual setup**: Developers must install and configure PostgreSQL locally
+- **Schema drift**: The local database might not reflect current migrations
+- **CI/CD complexity**: Build servers need database provisioning scripts
+- **Inconsistency**: Different environments may use different PostgreSQL versions
+
+Testcontainers solves these problems by providing databases on-demand using Docker containers. The plugin:
+
+1. Starts a fresh PostgreSQL container before code generation
+2. Runs Flyway migrations to build the exact schema from your migration files
+3. Generates JOOQ code against this pristine database
+4. Destroys the container immediately after generation
+
+This ensures every build uses an identical database state derived from your migrations.
+
+## Container configuration
+
+The plugin configures the PostgreSQL container in the `setupDatabaseForJooq` task:
+
+```kotlin
+postgresContainer = PostgreSQLContainer<Nothing>("postgres:${jooqConventions.postgresVersion}").apply {
+    withDatabaseName(jooqConventions.databaseName)
+    withUsername(jooqConventions.username)
+    withPassword(jooqConventions.password)
+    start()
+}
+
+containerJdbcUrl = postgresContainer!!.jdbcUrl
+containerUsername = postgresContainer!!.username
+containerPassword = postgresContainer!!.password
+```
+
+Key configuration points:
+
+### PostgreSQL version
+
+The `postgresVersion` property (default: `"16-alpine"`) controls which Docker image is used:
+
+```kotlin
+jooqConventions {
+    postgresVersion = "16-alpine"  // Lightweight Alpine-based image
+}
+```
+
+The Alpine variant reduces image size and startup time. You can specify any valid PostgreSQL Docker tag:
+
+- `"16-alpine"`: PostgreSQL 16 on Alpine Linux (recommended)
+- `"15"`: PostgreSQL 15 on Debian
+- `"14.2"`: Specific patch version
+
+### Database credentials
+
+The plugin creates a database with configurable credentials:
+
+```kotlin
+open class JooqConventionsExtension {
+    var databaseName: String = "testdb"
+    var username: String = "test"
+    var password: String = "test"
+    // ...
+}
+```
+
+These values are used for both:
+- Container initialization (`withDatabaseName`, `withUsername`, `withPassword`)
+- Flyway migration execution
+- JOOQ code generation
+
+Since the container is ephemeral and never exposed outside your build, these credentials don't need to be secure.
+
+### Dynamic connection details
+
+Testcontainers assigns random ports to avoid conflicts:
+
+```kotlin
+containerJdbcUrl = postgresContainer!!.jdbcUrl
+// Example: jdbc:postgresql://localhost:49153/testdb
+```
+
+The plugin captures the actual JDBC URL, username, and password after container startup, then injects them into JOOQ's configuration:
+
+```kotlin
+tasks.named("generateJooq") {
+    doFirst {
+        if (containerJdbcUrl != null) {
+            val jooqExt = project.extensions.getByType(JooqExtension::class.java)
+            jooqExt.configurations.getByName("main").jooqConfiguration.apply {
+                jdbc.url = containerJdbcUrl
+                jdbc.user = containerUsername
+                jdbc.password = containerPassword
+            }
+        }
+    }
+}
+```
+
+This dynamic injection allows JOOQ to connect to the randomly-assigned port.
+
+## Flyway integration
+
+After starting the container, the plugin runs Flyway migrations:
+
+```kotlin
+val migrationsDir = file("src/main/resources/db/migration")
+
+val flyway = Flyway.configure()
+    .dataSource(containerJdbcUrl, containerUsername, containerPassword)
+    .locations("filesystem:${migrationsDir.absolutePath}")
+    .load()
+
+val result = flyway.migrate()
+println("Flyway migrations completed: ${result.migrationsExecuted} migrations executed")
+```
+
+This approach:
+- Points Flyway at your actual migration files (`src/main/resources/db/migration`)
+- Executes all migrations in order
+- Produces the exact schema that will exist in production
+
+JOOQ then introspects this migrated schema, ensuring generated code matches your actual database structure.
+
+## Lifecycle management
+
+The plugin carefully manages container lifecycle to prevent resource leaks.
+
+### Startup
+
+The container starts only when code generation runs:
+
+```kotlin
+val setupDatabaseForJooq = tasks.register("setupDatabaseForJooq") {
+    doFirst {
+        println("Starting PostgreSQL container...")
+        postgresContainer = PostgreSQLContainer<Nothing>("...").apply {
+            start()
+        }
+        println("PostgreSQL container started: $containerJdbcUrl")
+    }
+}
+```
+
+### Cleanup
+
+The container stops and removes itself after generation, even if generation fails:
+
+```kotlin
+val stopPostgresContainer = tasks.register("stopPostgresContainer") {
+    doLast {
+        postgresContainer?.stop()
+        postgresContainer?.close()
+        postgresContainer = null
+        println("PostgreSQL container stopped and removed")
+    }
+}
+
+tasks.named("generateJooq") {
+    finalizedBy(stopPostgresContainer)
+}
+```
+
+The `finalizedBy` relationship guarantees cleanup runs regardless of task success or failure.
+
+### Ryuk container
+
+Testcontainers uses a helper container called Ryuk to clean up orphaned containers. The plugin ensures Ryuk is enabled:
+
+```kotlin
+tasks.withType<Test> {
+    environment("TESTCONTAINERS_RYUK_DISABLED", "false")
+}
+```
+
+This provides a safety net: if the Gradle build crashes before cleanup, Ryuk will still remove the container.
+
+## Benefits over manual setup
+
+### No installation required
+
+Developers only need Docker installed. PostgreSQL, Flyway, and JOOQ dependencies are managed automatically.
+
+### Version consistency
+
+Every developer and CI server uses the same PostgreSQL version specified in your configuration:
+
+```kotlin
+jooqConventions {
+    postgresVersion = "16-alpine"
+}
+```
+
+This eliminates "works on my machine" issues caused by version differences.
+
+### CI/CD simplicity
+
+Your build runs anywhere Docker is available:
+
+```bash
+./gradlew build
+```
+
+No database provisioning scripts, connection configuration, or environment-specific settings needed.
+
+### Clean builds
+
+Each build starts with a fresh database, eliminating state pollution from previous builds. You can never have stale schema artifacts.
+
+### Migration testing
+
+Because the plugin runs migrations before code generation, you verify that your migrations execute successfully on every build. Broken migrations fail immediately.
+
+## Docker requirements
+
+Testcontainers requires Docker to be installed and running on the build machine. The plugin assumes Docker is available but doesn't check explicitly. If Docker is not running, the build will fail with a Testcontainers error.
+
+For CI/CD environments, ensure:
+- Docker daemon is running
+- Build user has permission to access the Docker socket
+- Sufficient disk space for PostgreSQL images (typically 50-100 MB for Alpine variants)
+
+## Performance considerations
+
+Container startup and migration execution add overhead to the build:
+
+- **First run**: Downloads the PostgreSQL image (~50-100 MB for Alpine)
+- **Subsequent runs**: Uses cached image, startup takes 2-5 seconds
+- **Migration execution**: Depends on number and complexity of migrations
+
+For projects with many migrations, consider:
+- Using Alpine-based images (`postgres:16-alpine`) for faster startup
+- Running `generateJooq` manually when schema changes, not on every compilation

@@ -1,97 +1,238 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: Flyway-JOOQ Convention Plugin
+description: Automate JOOQ code generation from Flyway migrations with Testcontainers
+mode: custom
 ---
 
-## Setting up
+<div className="relative overflow-hidden bg-gradient-to-b from-[#0a0e1a] via-[#0f1420] to-[#0a0e1a] dark:from-[#0a0e1a] dark:via-[#0f1420] dark:to-[#0a0e1a]">
+  {/* Hero Section */}
+  <div className="relative py-20 px-4 sm:px-6 lg:px-8">
+    <div className="max-w-7xl mx-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        {/* Hero Content */}
+        <div className="lg:col-span-7">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white dark:text-white mb-6">
+            Flyway-JOOQ Convention Plugin
+          </h1>
+          <p className="text-lg sm:text-xl text-gray-300 dark:text-gray-300 max-w-2xl mb-8">
+            A Gradle convention plugin that automates JOOQ code generation from Flyway migrations using Testcontainers. No manual database setup required.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <a
+              href="/quickstart"
+              className="inline-flex items-center px-6 py-3 rounded-lg bg-[#238636] hover:bg-[#2ea043] text-white font-semibold transition-colors"
+            >
+              Get Started
+            </a>
+            <a
+              href="/introduction"
+              className="inline-flex items-center px-6 py-3 rounded-lg border border-white/30 bg-white/10 hover:bg-white/20 text-white font-semibold transition-colors"
+            >
+              Learn More
+            </a>
+          </div>
+        </div>
 
-Get your documentation site up and running in minutes.
+        {/* Hero Visual */}
+        <div className="lg:col-span-5">
+          <div className="relative rounded-2xl border border-[#6a5acd]/70 bg-[#24293a]/90 p-6 backdrop-blur-sm shadow-[0_0_40px_10px_rgba(106,90,205,0.3)]">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-[#ff5f56]"></div>
+                <div className="w-3 h-3 rounded-full bg-[#ffbd2e]"></div>
+                <div className="w-3 h-3 rounded-full bg-[#27c93f]"></div>
+              </div>
+              <pre className="text-sm text-gray-300 dark:text-gray-300 overflow-x-auto">
+                <code>{`plugins {
+  id("io.github.usmanzaheer1995
+    .flyway-jooq-convention-plugin")
+    version "1.0.9"
+}
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+jooqConventions {
+  targetPackage = "com.example.jooq"
+  postgresVersion = "16-alpine"
+}
 
-## Make it yours
+// Run: ./gradlew generateJooq`}</code>
+              </pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-Design a docs site that looks great and empowers your users.
+{/* Features Section */}
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+      Key features
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+      Everything you need to generate type-safe JOOQ classes from your Flyway migrations
+    </p>
+  </div>
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="rounded-xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6 hover:border-[#242b2c] dark:hover:border-[#242b2c] transition-colors">
+      <div className="w-12 h-12 rounded-lg bg-[#242b2c]/10 dark:bg-[#242b2c]/20 flex items-center justify-center mb-4">
+        <svg className="w-6 h-6 text-[#242b2c] dark:text-[#6a6a6d]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+      </div>
+      <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+        Automated container lifecycle
+      </h3>
+      <p className="text-gray-600 dark:text-gray-400">
+        Automatically spins up a PostgreSQL Testcontainer, applies migrations, generates code, and cleans up — no manual database setup required.
+      </p>
+    </div>
 
-## Create beautiful pages
+    <div className="rounded-xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6 hover:border-[#242b2c] dark:hover:border-[#242b2c] transition-colors">
+      <div className="w-12 h-12 rounded-lg bg-[#242b2c]/10 dark:bg-[#242b2c]/20 flex items-center justify-center mb-4">
+        <svg className="w-6 h-6 text-[#242b2c] dark:text-[#6a6a6d]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      </div>
+      <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+        Migration-based generation
+      </h3>
+      <p className="text-gray-600 dark:text-gray-400">
+        Generate JOOQ classes directly from your actual Flyway SQL migration files in src/main/resources/db/migration.
+      </p>
+    </div>
 
-Everything you need to create world-class documentation.
+    <div className="rounded-xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6 hover:border-[#242b2c] dark:hover:border-[#242b2c] transition-colors">
+      <div className="w-12 h-12 rounded-lg bg-[#242b2c]/10 dark:bg-[#242b2c]/20 flex items-center justify-center mb-4">
+        <svg className="w-6 h-6 text-[#242b2c] dark:text-[#6a6a6d]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+        </svg>
+      </div>
+      <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+        Kotlin-first configuration
+      </h3>
+      <p className="text-gray-600 dark:text-gray-400">
+        Opinionated setup for Kotlin projects with built-in JSONB and INET type mappings, plus automatic source path configuration.
+      </p>
+    </div>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+    <div className="rounded-xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27] p-6 hover:border-[#242b2c] dark:hover:border-[#242b2c] transition-colors">
+      <div className="w-12 h-12 rounded-lg bg-[#242b2c]/10 dark:bg-[#242b2c]/20 flex items-center justify-center mb-4">
+        <svg className="w-6 h-6 text-[#242b2c] dark:text-[#6a6a6d]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+        </svg>
+      </div>
+      <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+        Zero dependency management
+      </h3>
+      <p className="text-gray-600 dark:text-gray-400">
+        Automatically injects all required dependencies: JOOQ, PostgreSQL driver, Flyway Core, and Testcontainers.
+      </p>
+    </div>
+  </div>
+</div>
 
-## Need inspiration?
+{/* Quick Start Section */}
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="mb-8">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+      Quick start
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400">
+      Get up and running in three simple steps
+    </p>
+  </div>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+  <Steps>
+    <Step title="Add the plugin to your project">
+      Add the plugin to your `build.gradle.kts`:
+
+      ```kotlin build.gradle.kts
+      plugins {
+          id("io.github.usmanzaheer1995.flyway-jooq-convention-plugin") version "1.0.9"
+      }
+      ```
+
+      <Note>Requires Java 21 and Docker for Testcontainers</Note>
+    </Step>
+
+    <Step title="Configure the plugin">
+      Add a `jooqConventions` block to customize settings (optional):
+
+      ```kotlin build.gradle.kts
+      jooqConventions {
+          targetPackage = "com.example.jooq.generated"
+          postgresVersion = "16-alpine"
+          databaseName = "testdb"
+          username = "test"
+          password = "test"
+          inputSchema = "public"
+          excludedTables = "flyway_schema_history"
+      }
+      ```
+    </Step>
+
+    <Step title="Run the generation">
+      Generate JOOQ classes from your Flyway migrations:
+
+      ```bash
+      ./gradlew generateJooq
+      ```
+
+      Generated classes will be available in `build/generated-src/jooq/main` and automatically included in your Kotlin compilation path.
+    </Step>
+  </Steps>
+</div>
+
+{/* Explore Documentation Section */}
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="mb-8">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+      Explore the documentation
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400">
+      Learn how the plugin works and how to customize it for your project
+    </p>
+  </div>
+
+  <CardGroup cols={3}>
+    <Card title="Core concepts" icon="lightbulb" href="/concepts/how-it-works">
+      Understand how the plugin automates JOOQ generation with Testcontainers
+    </Card>
+    <Card title="Configuration" icon="sliders" href="/configuration/overview">
+      Customize database settings, JOOQ options, and generation behavior
+    </Card>
+    <Card title="Gradle tasks" icon="list-check" href="/tasks/setup-database">
+      Learn about the three main tasks: setup, generate, and cleanup
+    </Card>
+    <Card title="Migration setup" icon="database" href="/guides/migration-setup">
+      Organize your Flyway migrations for optimal JOOQ generation
+    </Card>
+    <Card title="Custom types" icon="code" href="/guides/custom-types">
+      Map PostgreSQL custom types like JSONB and INET to Kotlin types
+    </Card>
+    <Card title="Troubleshooting" icon="wrench" href="/guides/troubleshooting">
+      Common issues and solutions for Docker, Flyway, and JOOQ
+    </Card>
+  </CardGroup>
+</div>
+
+{/* CTA Section */}
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="rounded-2xl border border-gray-200 dark:border-[#27272a] bg-gradient-to-br from-white to-gray-50 dark:from-[#1a1d27] dark:to-[#0f1117] p-8 sm:p-12 text-center">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+      Ready to automate your JOOQ generation?
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto mb-8">
+      Stop managing database containers manually. Let the plugin handle it for you.
+    </p>
+    <a
+      href="/quickstart"
+      className="inline-flex items-center px-8 py-4 rounded-lg bg-[#238636] hover:bg-[#2ea043] text-white font-semibold transition-colors text-lg"
+    >
+      Get Started Now
+    </a>
+  </div>
+</div>

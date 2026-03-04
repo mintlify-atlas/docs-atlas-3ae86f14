@@ -1,0 +1,86 @@
+---
+title: Introduction
+description: Learn about the Flyway-JOOQ Convention Plugin, a Gradle plugin that automates JOOQ code generation from Flyway migrations
+---
+
+The Flyway-JOOQ Convention Plugin is a framework-agnostic Gradle convention plugin that simplifies JOOQ code generation for Kotlin-based projects by automatically generating type-safe database access code from your Flyway migrations.
+
+## What is it?
+
+This plugin bridges the gap between Flyway database migrations and JOOQ code generation. Instead of manually configuring JOOQ to connect to a database, this plugin automates the entire workflow using Testcontainers.
+
+## How it works
+
+The plugin follows a simple three-step process:
+
+<Steps>
+  <Step title="Start database">
+    Automatically spins up a temporary PostgreSQL container using Testcontainers
+  </Step>
+  
+  <Step title="Apply migrations">
+    Runs your Flyway migrations from `src/main/resources/db/migration` against the container
+  </Step>
+  
+  <Step title="Generate code">
+    Generates JOOQ Kotlin classes based on the actual schema, then cleans up the container
+  </Step>
+</Steps>
+
+## Key benefits
+
+- **Zero manual database setup**: No need to maintain a separate database instance for code generation
+- **Always in sync**: Generated code reflects your actual migration scripts
+- **Opinionated defaults**: Pre-configured for Kotlin with sensible defaults for PostgreSQL
+- **Type-safe queries**: Get compile-time safety for all database operations
+- **Automatic dependency management**: All required dependencies (JOOQ, Flyway, PostgreSQL driver) are added automatically
+
+## Features
+
+### Automated database lifecycle
+
+The plugin handles the complete lifecycle of the temporary database:
+- Starts a PostgreSQL Testcontainer before generation
+- Applies all Flyway migrations
+- Generates JOOQ classes
+- Stops and removes the container afterward
+
+### Migration-based generation
+
+Your Flyway SQL migrations in `src/main/resources/db/migration` serve as the single source of truth for schema definition. The plugin automatically discovers and applies them.
+
+### Opinionated JOOQ configuration
+
+The plugin comes pre-configured with:
+- **Kotlin code generation**: Uses `KotlinGenerator` for idiomatic Kotlin code
+- **Type mappings**: Includes forced types for `JSONB` and `INET` PostgreSQL types
+- **Source integration**: Generated sources are automatically included in the Kotlin compilation path at `build/generated-src/jooq/main`
+- **Immutable POJOs**: Generates immutable data classes with fluent setters
+- **Null safety**: Kotlin not-null attributes for records, POJOs, and interfaces
+
+### Automatic dependency management
+
+By applying this plugin, the following dependencies are automatically added to your project:
+
+- `org.jooq:jooq` (implementation)
+- `org.postgresql:postgresql` (implementation)
+- `org.flywaydb:flyway-core` (implementation)
+- `org.flywaydb:flyway-database-postgresql` (implementation)
+- `org.testcontainers:postgresql` (testImplementation)
+- `org.testcontainers:junit-jupiter` (testImplementation)
+
+## Prerequisites
+
+Before using this plugin, ensure you have:
+
+<Note>
+  **Java 21** or higher is required to use this plugin.
+</Note>
+
+<Warning>
+  **Docker** must be installed and running on your system. Testcontainers requires Docker to spin up the temporary PostgreSQL database.
+</Warning>
+
+## What's next?
+
+Ready to get started? Check out the [Installation](/installation) guide to add the plugin to your project, or jump straight to the [Quickstart](/quickstart) to see it in action.

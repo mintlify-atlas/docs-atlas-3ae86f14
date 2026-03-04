@@ -1,0 +1,410 @@
+---
+title: "Custom Type Mappings"
+description: "Understanding PostgreSQL-specific type mappings configured in the Flyway-JOOQ Convention Plugin"
+---
+
+The Flyway-JOOQ Convention Plugin includes predefined type mappings for PostgreSQL-specific types that don't have direct equivalents in standard SQL or JOOQ's type system.
+
+## Configured Type Mappings
+
+The plugin automatically configures the following forced type mappings:
+
+| PostgreSQL Type | JOOQ Mapped Type | Kotlin Type | Location in Source |
+|----------------|------------------|-------------|--------------------|
+| `JSONB` | `varchar` | `String` / `String?` | FlywayJooqConventionPlugin.kt:125-129 |
+| `JSON` | `varchar` | `String` / `String?` | FlywayJooqConventionPlugin.kt:125-129 |
+| `INET` | `varchar` | `String` / `String?` | FlywayJooqConventionPlugin.kt:130-134 |
+
+<Note>
+These mappings are applied via JOOQ's `ForcedType` configuration. All columns with these types across all tables will be mapped to `varchar` in the generated code.
+</Note>
+
+## Source Code Configuration
+
+Here's the exact configuration from **FlywayJooqConventionPlugin.kt:123-136**:
+
+```kotlin
+forcedTypes.addAll(
+    listOf(
+        ForcedType().apply {
+            name = "varchar"
+            includeExpression = ".*"
+            includeTypes = "JSONB?"
+        },
+        ForcedType().apply {
+            name = "varchar"
+            includeExpression = ".*"
+            includeTypes = "INET"
+        },
+    ),
+)
+```
+
+## JSONB Type Mapping
+
+### Why Map JSONB to String?
+
+JOOQ doesn't have native support for PostgreSQL's JSONB type. By mapping it to `varchar`, you get:
+
+- **Compatibility**: Works seamlessly with PostgreSQL's JSONB operations
+- **Flexibility**: Handle JSON serialization/deserialization in your application layer
+- **Type Safety**: Use strongly-typed Kotlin data classes with JSON libraries
+
+### Using JSONB in Migrations
+
+Define JSONB columns in your Flyway migrations:
+
+```sql
+-- V1__create_products_table.sql
+CREATE TABLE products (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    attributes JSONB NOT NULL,
+    metadata JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Create a GIN index for efficient JSONB queries
+CREATE INDEX idx_products_attributes ON products USING GIN(attributes);
+```
+
+### Using JSONB in Generated JOOQ Code
+
+After running `./gradlew generateJooq`, the generated code will treat JSONB as `String`:
+
+```kotlin
+import com.example.jooq.generated.Tables.PRODUCTS
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.Serializable
+import org.jooq.DSLContext
+
+@Serializable
+data class ProductAttributes(
+    val color: String,
+    val size: String,
+    val weight: Double,
+    val dimensions: Map<String, Double>
+)
+
+class ProductRepository(private val dsl: DSLContext) {
+    
+    fun createProduct(name: String, attributes: ProductAttributes) {
+        val attributesJson = Json.encodeToString(
+            ProductAttributes.serializer(), 
+            attributes
+        )
+        
+        dsl.insertInto(PRODUCTS)
+            .set(PRODUCTS.NAME, name)
+            .set(PRODUCTS.ATTRIBUTES, attributesJson)  // String parameter
+            .execute()
+    }
+    
+    fun getProductAttributes(productId: Long): ProductAttributes? {
+        val attributesJson = dsl.select(PRODUCTS.ATTRIBUTES)
+            .from(PRODUCTS)
+            .where(PRODUCTS.ID.eq(productId))
+            .fetchOne(PRODUCTS.ATTRIBUTES)  // Returns String?
+            
+        return attributesJson?.let {
+            Json.decodeFromString(ProductAttributes.serializer(), it)
+        }
+    }
+}
+```
+
+<Tip>
+Use libraries like **kotlinx.serialization** or **Jackson** to handle JSON serialization/deserialization. The string-based approach gives you full control over the JSON handling strategy.
+</Tip>
+
+### JSONB Query Operations
+
+You can still use PostgreSQL's JSONB operators with JOOQ's raw SQL capabilities:
+
+```kotlin
+import org.jooq.impl.DSL
+
+class ProductRepository(private val dsl: DSLContext) {
+    
+    // Query using JSONB operators
+    fun findProductsByColor(color: String): List<Product> {
+        return dsl.selectFrom(PRODUCTS)
+            .where(
+                DSL.condition(
+                    "attributes->>'color' = ?", 
+                    color
+                )
+            )
+            .fetchInto(Product::class.java)
+    }
+    
+    // Query nested JSONB fields
+    fun findProductsByDimensionWidth(minWidth: Double): List<Product> {
+        return dsl.selectFrom(PRODUCTS)
+            .where(
+                DSL.condition(
+                    "(attributes->'dimensions'->>'width')::numeric >= ?",
+                    minWidth
+                )
+            )
+            .fetchInto(Product::class.java)
+    }
+    
+    // Use JSONB containment operator
+    fun findProductsWithAttributes(requiredAttrs: String): List<Product> {
+        return dsl.selectFrom(PRODUCTS)
+            .where(
+                DSL.condition(
+                    "attributes @> ?::jsonb",
+                    requiredAttrs
+                )
+            )
+            .fetchInto(Product::class.java)
+    }
+}
+```
+
+<Warning>
+When using raw SQL conditions, ensure proper SQL injection protection by using parameterized queries with `?` placeholders.
+</Warning>
+
+### Testing with JSONB
+
+Example test using Testcontainers (already included in the plugin dependencies):
+
+```kotlin
+import org.junit.jupiter.api.Test
+import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.junit.jupiter.Container
+import org.testcontainers.junit.jupiter.Testcontainers
+import kotlinx.serialization.json.Json
+import kotlin.test.assertEquals
+
+@Testcontainers
+class ProductRepositoryTest {
+    
+    @Container
+    val postgres = PostgreSQLContainer<Nothing>("postgres:16-alpine")
+        .apply {
+            withDatabaseName("testdb")
+        }
+    
+    @Test
+    fun `should store and retrieve JSONB attributes`() {
+        val attributes = ProductAttributes(
+            color = "blue",
+            size = "large",
+            weight = 2.5,
+            dimensions = mapOf("width" to 10.0, "height" to 20.0)
+        )
+        
+        val productId = repository.createProduct("Test Product", attributes)
+        val retrieved = repository.getProductAttributes(productId)
+        
+        assertEquals(attributes, retrieved)
+    }
+}
+```
+
+## INET Type Mapping
+
+### Why Map INET to String?
+
+PostgreSQL's `INET` type stores IPv4 or IPv6 network addresses. Mapping to `varchar` provides:
+
+- **Simplicity**: Work with IP addresses as strings in your application
+- **Validation**: Use libraries like Apache Commons Validator for IP validation
+- **Compatibility**: Easy integration with existing IP address handling code
+
+### Using INET in Migrations
+
+```sql
+-- V2__create_api_logs_table.sql
+CREATE TABLE api_logs (
+    id BIGSERIAL PRIMARY KEY,
+    endpoint VARCHAR(500) NOT NULL,
+    client_ip INET NOT NULL,
+    server_ip INET,
+    user_agent TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Create index for IP address lookups
+CREATE INDEX idx_api_logs_client_ip ON api_logs(client_ip);
+```
+
+### Using INET in Generated JOOQ Code
+
+```kotlin
+import com.example.jooq.generated.Tables.API_LOGS
+import org.jooq.DSLContext
+import java.net.InetAddress
+
+class ApiLogRepository(private val dsl: DSLContext) {
+    
+    fun logRequest(
+        endpoint: String,
+        clientIpAddress: InetAddress,
+        userAgent: String?
+    ) {
+        dsl.insertInto(API_LOGS)
+            .set(API_LOGS.ENDPOINT, endpoint)
+            .set(API_LOGS.CLIENT_IP, clientIpAddress.hostAddress)  // String
+            .set(API_LOGS.USER_AGENT, userAgent)
+            .execute()
+    }
+    
+    fun getRequestsByIp(ipAddress: String): List<ApiLog> {
+        return dsl.selectFrom(API_LOGS)
+            .where(API_LOGS.CLIENT_IP.eq(ipAddress))
+            .fetchInto(ApiLog::class.java)
+    }
+    
+    fun getRequestsByIpRange(network: String, maskLength: Int): List<ApiLog> {
+        // Use PostgreSQL INET operators
+        return dsl.selectFrom(API_LOGS)
+            .where(
+                DSL.condition(
+                    "client_ip << ?::inet",
+                    "$network/$maskLength"
+                )
+            )
+            .fetchInto(ApiLog::class.java)
+    }
+}
+```
+
+### IP Address Validation
+
+Validate IP addresses before storing:
+
+```kotlin
+import org.apache.commons.validator.routines.InetAddressValidator
+
+class IpAddressService {
+    
+    private val validator = InetAddressValidator.getInstance()
+    
+    fun validateAndStore(ipString: String, endpoint: String) {
+        require(validator.isValid(ipString)) {
+            "Invalid IP address: $ipString"
+        }
+        
+        repository.logRequest(
+            endpoint = endpoint,
+            clientIpAddress = InetAddress.getByName(ipString),
+            userAgent = null
+        )
+    }
+    
+    fun isPrivateIp(ipString: String): Boolean {
+        if (!validator.isValid(ipString)) return false
+        
+        val ip = InetAddress.getByName(ipString)
+        return ip.isSiteLocalAddress || ip.isLoopbackAddress
+    }
+}
+```
+
+### INET Query Operations
+
+```kotlin
+import org.jooq.impl.DSL
+
+class ApiLogRepository(private val dsl: DSLContext) {
+    
+    // Find all requests from a specific subnet
+    fun getRequestsFromSubnet(subnet: String): List<ApiLog> {
+        return dsl.selectFrom(API_LOGS)
+            .where(
+                DSL.condition(
+                    "client_ip << ?::inet",
+                    subnet
+                )
+            )
+            .fetchInto(ApiLog::class.java)
+    }
+    
+    // Check if IP is in specific range
+    fun isIpInRange(ip: String, rangeStart: String, rangeEnd: String): Boolean {
+        return dsl.select(DSL.field("1"))
+            .where(
+                DSL.condition(
+                    "?::inet BETWEEN ?::inet AND ?::inet",
+                    ip, rangeStart, rangeEnd
+                )
+            )
+            .fetchOne() != null
+    }
+}
+```
+
+## Customizing Type Mappings
+
+<Warning>
+The plugin's forced type mappings are built-in and cannot be customized through the `jooqConventions` extension. To modify them, you would need to fork the plugin or override JOOQ configuration manually.
+</Warning>
+
+If you need different type mappings, you can configure JOOQ directly in your `build.gradle.kts` after the plugin applies:
+
+```kotlin
+// This is advanced usage - not recommended unless necessary
+import nu.studer.gradle.jooq.JooqExtension
+import org.jooq.meta.jaxb.ForcedType
+
+plugins {
+    id("io.github.usmanzaheer1995.flyway-jooq-convention-plugin") version "1.0.9"
+}
+
+// Override after plugin configuration
+afterEvaluate {
+    configure<JooqExtension> {
+        configurations.getByName("main").jooqConfiguration.apply {
+            generator.database.forcedTypes.clear()
+            generator.database.forcedTypes.addAll(
+                listOf(
+                    // Your custom mappings here
+                )
+            )
+        }
+    }
+}
+```
+
+## Best Practices
+
+1. **Use Type-Safe Wrappers**: Create wrapper classes for complex types
+   ```kotlin
+   @JvmInline
+   value class IpAddress(val value: String) {
+       init {
+           require(InetAddressValidator.getInstance().isValid(value))
+       }
+   }
+   ```
+
+2. **Centralize JSON Handling**: Create utility functions for serialization
+   ```kotlin
+   object JsonUtil {
+       inline fun <reified T> toJson(value: T): String =
+           Json.encodeToString(value)
+       
+       inline fun <reified T> fromJson(json: String): T =
+           Json.decodeFromString(json)
+   }
+   ```
+
+3. **Validate at Boundaries**: Always validate data when entering/leaving the database
+
+4. **Use Database Constraints**: Add CHECK constraints for additional validation
+   ```sql
+   ALTER TABLE api_logs
+       ADD CONSTRAINT chk_client_ip_valid 
+       CHECK (client_ip IS NOT NULL);
+   ```
+
+## Next Steps
+
+- See [Migration Setup](/guides/migration-setup) for creating tables with custom types
+- Check [Troubleshooting](/guides/troubleshooting) for type-related errors
+- Review the [plugin source code](https://github.com/usmanzaheer1995/flyway-jooq-convention/blob/main/src/main/kotlin/io/github/usmanzaheer1995/FlywayJooqConventionPlugin.kt#L123-L136) for the exact configuration

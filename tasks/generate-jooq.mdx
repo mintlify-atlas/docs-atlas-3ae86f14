@@ -1,0 +1,189 @@
+---
+title: generateJooq Task
+description: Generates JOOQ code from the database schema created by Flyway migrations
+---
+
+The `generateJooq` task is provided by the [nu.studer.jooq](https://github.com/etiennestuder/gradle-jooq-plugin) Gradle plugin and is automatically configured by the Flyway-JOOQ Convention Plugin to generate Kotlin code from your database schema.
+
+## What It Does
+
+This task:
+
+1. **Connects to the Database** - Uses the PostgreSQL container started by `setupDatabaseForJooq`
+2. **Introspects Schema** - Analyzes all tables, columns, constraints, and relationships
+3. **Generates Kotlin Code** - Creates type-safe JOOQ classes for database access
+4. **Outputs to Build Directory** - Places generated code in `build/generated-src/jooq/main`
+
+## Task Dependencies
+
+The plugin automatically configures dependencies (lines 164-180):
+
+```kotlin
+tasks.named("generateJooq") {
+    dependsOn(setupDatabaseForJooq)
+    finalizedBy(stopPostgresContainer)
+
+    doFirst {
+        if (containerJdbcUrl != null) {
+            println("Configuring jOOQ to use container: $containerJdbcUrl")
+
+            val jooqExt = project.extensions.getByType(JooqExtension::class.java)
+            jooqExt.configurations.getByName("main").jooqConfiguration.apply {
+                jdbc.url = containerJdbcUrl
+                jdbc.user = containerUsername
+                jdbc.password = containerPassword
+            }
+        }
+    }
+}
+```
+
+- **dependsOn** `setupDatabaseForJooq` - Ensures database is ready before generation
+- **finalizedBy** `stopPostgresContainer` - Cleans up container after generation completes
+
+## Generated Code Location
+
+Generated JOOQ classes are placed in:
+
+```
+build/generated-src/jooq/main/
+```
+
+The plugin automatically adds this directory to the Kotlin source set (lines 187-193):
+
+```kotlin
+configure<KotlinProjectExtension> {
+    sourceSets {
+        getByName("main") {
+            kotlin.srcDir("build/generated-src/jooq/main")
+        }
+    }
+}
+```
+
+## JOOQ Configuration
+
+The plugin configures JOOQ with sensible defaults (lines 97-161):
+
+### Database Settings
+
+- **Driver**: `org.postgresql.Driver`
+- **Generator**: `org.jooq.codegen.KotlinGenerator` (generates Kotlin code)
+- **Database**: `org.jooq.meta.postgres.PostgresDatabase`
+- **Schema**: Uses `inputSchema` from configuration (default: `"public"`)
+
+### Code Generation Options
+
+```kotlin
+generate.apply {
+    isDeprecated = false
+    isRecords = true
+    isImmutablePojos = true
+    isFluentSetters = true
+    isKotlinSetterJvmNameAnnotationsOnIsPrefix = true
+    isKotlinNotNullPojoAttributes = true
+    isKotlinNotNullRecordAttributes = true
+    isKotlinNotNullInterfaceAttributes = true
+}
+```
+
+This generates:
+- **Records** for type-safe row representations
+- **Immutable POJOs** for data transfer objects
+- **Fluent setters** for convenient object construction
+- **Kotlin-friendly** not-null attributes where applicable
+
+### Type Mappings
+
+Custom forced types are configured for PostgreSQL-specific types:
+
+```kotlin
+forcedTypes.addAll(
+    listOf(
+        ForcedType().apply {
+            name = "varchar"
+            includeExpression = ".*"
+            includeTypes = "JSONB?"
+        },
+        ForcedType().apply {
+            name = "varchar"
+            includeExpression = ".*"
+            includeTypes = "INET"
+        },
+    ),
+)
+```
+
+This maps `JSONB` and `INET` types to `String` in generated code.
+
+## Integration with Build
+
+The plugin ensures `generateJooq` runs before Kotlin compilation (lines 182-184):
+
+```kotlin
+tasks.named("compileKotlin") {
+    dependsOn("generateJooq")
+}
+```
+
+This means:
+- Running `./gradlew build` automatically generates JOOQ code
+- Running `./gradlew compileKotlin` triggers generation if needed
+- Generated code is always up-to-date before compilation
+
+## Manual Execution
+
+You can run the task manually:
+
+```bash
+./gradlew generateJooq
+```
+
+This will:
+1. Execute `setupDatabaseForJooq` (start container, run migrations)
+2. Generate JOOQ code from the database schema
+3. Execute `stopPostgresContainer` (cleanup)
+
+## Output Messages
+
+When the task runs, you'll see output like:
+
+```
+> Task :setupDatabaseForJooq
+Starting PostgreSQL container...
+PostgreSQL container started: jdbc:postgresql://localhost:32768/testdb
+Running Flyway migrations...
+Flyway migrations completed: 3 migrations executed
+
+> Task :generateJooq
+Configuring jOOQ to use container: jdbc:postgresql://localhost:32768/testdb
+Generating jOOQ sources...
+Generation completed in 1.2s
+
+> Task :stopPostgresContainer
+PostgreSQL container stopped and removed
+```
+
+## Excluding Tables
+
+You can exclude specific tables from generation (e.g., Flyway's history table):
+
+```kotlin
+jooqConventions {
+    excludedTables = "flyway_schema_history|internal_.*"
+}
+```
+
+The default excludes `flyway_schema_history`.
+
+## Clean Task
+
+Generated code is automatically removed when running `./gradlew clean` (lines 195-199):
+
+```kotlin
+tasks.named("clean") {
+    doLast {
+        delete("build/generated-src/jooq")
+    }
+}
+```

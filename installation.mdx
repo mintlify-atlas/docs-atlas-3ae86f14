@@ -1,0 +1,117 @@
+---
+title: Installation
+description: Install the Flyway-JOOQ Convention Plugin using Gradle Plugin Portal or GitHub Packages
+---
+
+The Flyway-JOOQ Convention Plugin can be installed in two ways: directly from the Gradle Plugin Portal (recommended) or via GitHub Packages.
+
+## Prerequisites
+
+Before installing, ensure you have:
+
+- **Java 21** or higher
+- **Docker** installed and running (required for Testcontainers)
+- A Gradle project with Kotlin DSL (`build.gradle.kts`)
+
+## Method 1: Gradle Plugin Portal (recommended)
+
+This is the simplest installation method and requires no additional configuration.
+
+Add the plugin to your `build.gradle.kts`:
+
+```kotlin build.gradle.kts
+plugins {
+    id("io.github.usmanzaheer1995.flyway-jooq-convention-plugin") version "1.0.9"
+}
+```
+
+That's it! Gradle will automatically download the plugin from the Gradle Plugin Portal.
+
+## Method 2: GitHub Packages
+
+If you prefer to install from GitHub Packages, follow these steps:
+
+<Steps>
+  <Step title="Configure plugin repository">
+    Add the GitHub Packages repository to your `settings.gradle.kts`:
+
+    ```kotlin settings.gradle.kts
+    pluginManagement {
+        repositories {
+            mavenCentral()
+            gradlePluginPortal()
+            maven {
+                url = uri("https://maven.pkg.github.com/usmanzaheer1995/flyway-jooq-convention")
+                credentials {
+                    username = extra.properties["github.flyway-jooq-plugin.githubActor"] as String?
+                        ?: System.getenv("GITHUB_ACTOR")
+                    password = extra.properties["github.flyway-jooq-plugin.githubToken"] as String?
+                        ?: System.getenv("GITHUB_TOKEN")
+                }
+            }
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Set up credentials">
+    Configure your GitHub credentials using one of these methods:
+
+    ### Option A: Environment variables
+
+    Set the following environment variables:
+
+    ```bash
+    export GITHUB_ACTOR=your-github-username
+    export GITHUB_TOKEN=your-github-personal-access-token
+    ```
+
+    ### Option B: Gradle properties
+
+    Add the credentials to your `gradle.properties` file (in your project root or `~/.gradle/`):
+
+    ```properties gradle.properties
+    github.flyway-jooq-plugin.githubActor=your-github-username
+    github.flyway-jooq-plugin.githubToken=your-github-personal-access-token
+    ```
+
+    <Warning>
+      Never commit `gradle.properties` with credentials to version control. Add it to your `.gitignore` if storing credentials there.
+    </Warning>
+
+    <Note>
+      To create a GitHub Personal Access Token:
+      1. Go to GitHub Settings > Developer settings > Personal access tokens
+      2. Generate a new token with `read:packages` scope
+      3. Copy the token and use it as `GITHUB_TOKEN`
+    </Note>
+  </Step>
+
+  <Step title="Apply the plugin">
+    Add the plugin to your `build.gradle.kts`:
+
+    ```kotlin build.gradle.kts
+    plugins {
+        id("io.github.usmanzaheer1995.flyway-jooq-convention-plugin") version "1.0.9"
+    }
+    ```
+  </Step>
+</Steps>
+
+## Verify installation
+
+After applying the plugin, verify it's working by running:
+
+```bash
+./gradlew tasks --group=jooq
+```
+
+You should see the following JOOQ-related tasks:
+
+- `setupDatabaseForJooq` - Starts PostgreSQL container and runs Flyway migrations for jOOQ generation
+- `stopPostgresContainer` - Stops PostgreSQL testcontainer
+- `generateJooq` - Generates JOOQ code from database schema
+
+## What's next?
+
+Now that the plugin is installed, proceed to the [Quickstart](/quickstart) guide to configure it and generate your first JOOQ classes.

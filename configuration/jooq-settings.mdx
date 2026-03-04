@@ -1,0 +1,216 @@
+---
+title: 'JOOQ Settings'
+description: 'Configure JOOQ code generation behavior, including package names, schemas, and type mappings'
+---
+
+These settings control how JOOQ generates Kotlin code from your database schema.
+
+## Properties
+
+<ParamField path="targetPackage" type="string" default="com.example.jooq.generated">
+  The package name for generated JOOQ classes.
+  
+  All generated tables, records, and DAOs will be placed in this package. The generated code is written to `build/generated-src/jooq/main`.
+</ParamField>
+
+<ParamField path="inputSchema" type="string" default="public">
+  The PostgreSQL schema to generate code from.
+  
+  JOOQ will only generate code for tables in this schema. Use `public` for the default PostgreSQL schema.
+</ParamField>
+
+<ParamField path="excludedTables" type="string" default="flyway_schema_history">
+  Tables to exclude from code generation (pipe-separated pattern).
+  
+  Supports regular expressions. By default, excludes Flyway's metadata table.
+</ParamField>
+
+## JOOQ Generator Configuration
+
+The plugin automatically configures JOOQ with Kotlin-optimized settings. Here's what's configured under the hood:
+
+### Kotlin Generator
+
+The plugin uses `org.jooq.codegen.KotlinGenerator` (line 116) with these Kotlin-specific options:
+
+```kotlin
+// From FlywayJooqConventionPlugin.kt lines 139-148
+generate {
+    isDeprecated = false
+    isRecords = true
+    isImmutablePojos = true
+    isFluentSetters = true
+    isKotlinSetterJvmNameAnnotationsOnIsPrefix = true
+    isKotlinNotNullPojoAttributes = true
+    isKotlinNotNullRecordAttributes = true
+    isKotlinNotNullInterfaceAttributes = true
+}
+```
+
+This generates:
+- Immutable Kotlin data classes
+- Fluent setter methods
+- Non-null types for non-nullable database columns
+- Proper JVM name annotations for boolean properties
+
+### Forced Type Mappings
+
+The plugin automatically maps PostgreSQL-specific types to Kotlin types:
+
+```kotlin
+// From FlywayJooqConventionPlugin.kt lines 123-136
+forcedTypes {
+    // Map JSONB columns to String
+    forcedType {
+        name = "varchar"
+        includeExpression = ".*"
+        includeTypes = "JSONB?"
+    }
+    
+    // Map INET columns to String
+    forcedType {
+        name = "varchar"
+        includeExpression = ".*"
+        includeTypes = "INET"
+    }
+}
+```
+
+This means:
+- **JSONB columns** → `String` (you can parse JSON manually or with kotlinx.serialization)
+- **INET columns** → `String` (IP addresses as strings)
+
+<Note>
+  These type mappings are hardcoded in the plugin to ensure consistent behavior across projects. To customize type mappings, you'll need to override the JOOQ configuration manually.
+</Note>
+
+## Examples
+
+### Custom Package Name
+
+The most common customization:
+
+```kotlin
+jooqConventions {
+    targetPackage = "com.mycompany.myapp.database"
+}
+```
+
+Generated classes will be in:
+```
+com.mycompany.myapp.database.tables.Users
+com.mycompany.myapp.database.tables.records.UsersRecord
+com.mycompany.myapp.database.Tables.USERS
+```
+
+### Custom Schema
+
+If you use a non-default PostgreSQL schema:
+
+```kotlin
+jooqConventions {
+    inputSchema = "sales"
+    targetPackage = "com.company.sales.db"
+}
+```
+
+### Exclude Multiple Tables
+
+Exclude multiple tables using pipe-separated patterns:
+
+```kotlin
+jooqConventions {
+    excludedTables = "flyway_schema_history|temp_.*|test_.*"
+}
+```
+
+This excludes:
+- The `flyway_schema_history` table
+- Any table starting with `temp_`
+- Any table starting with `test_`
+
+### Multi-Schema Project
+
+For projects with multiple schemas, you can only generate from one schema at a time:
+
+```kotlin
+jooqConventions {
+    inputSchema = "auth"
+    targetPackage = "com.myapp.auth.db"
+    excludedTables = "flyway_schema_history"
+}
+```
+
+<Warning>
+  The plugin currently supports generating code from a single schema. If you need multiple schemas, consider running code generation separately for each schema or customizing the JOOQ configuration manually.
+</Warning>
+
+### Exclude Only Audit Tables
+
+Generate code for all tables except audit tables:
+
+```kotlin
+jooqConventions {
+    excludedTables = ".*_audit|flyway_schema_history"
+}
+```
+
+## Generated Code Location
+
+The plugin generates code to:
+```
+build/generated-src/jooq/main/
+```
+
+This directory is automatically:
+- Added to Kotlin source sets (line 188-192)
+- Deleted when running `./gradlew clean` (line 195-199)
+- Regenerated on `./gradlew generateJooq`
+
+## Database Configuration
+
+The plugin uses the PostgreSQL database driver with these settings:
+
+```kotlin
+// From FlywayJooqConventionPlugin.kt lines 107-113
+jdbc {
+    driver = "org.postgresql.Driver"
+    url = containerJdbcUrl  // From Testcontainer
+    user = containerUsername
+    password = containerPassword
+}
+```
+
+```kotlin
+// From FlywayJooqConventionPlugin.kt lines 118-121
+database {
+    name = "org.jooq.meta.postgres.PostgresDatabase"
+    inputSchema = jooqConventions.inputSchema
+    excludes = jooqConventions.excludedTables
+}
+```
+
+## Complete Example
+
+A fully customized JOOQ configuration:
+
+```kotlin
+jooqConventions {
+    // Database settings
+    databaseName = "orders_db"
+    username = "orders_user"
+    password = "orders_pass"
+    postgresVersion = "15-alpine"
+    
+    // JOOQ settings
+    inputSchema = "orders"
+    targetPackage = "com.shop.orders.database"
+    excludedTables = "flyway_schema_history|temp_.*|migration_.*"
+}
+```
+
+This configuration:
+- Uses PostgreSQL 15
+- Generates code from the `orders` schema
+- Places generated code in `com.shop.orders.database`
+- Excludes Flyway metadata and temporary tables

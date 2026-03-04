@@ -1,0 +1,140 @@
+---
+title: 'Database Settings'
+description: 'Configure the PostgreSQL Testcontainer used for JOOQ code generation'
+---
+
+The plugin uses Testcontainers to spin up a temporary PostgreSQL database for JOOQ code generation. These settings control that database instance.
+
+## Properties
+
+<ParamField path="databaseName" type="string" default="testdb">
+  The name of the PostgreSQL database created in the Testcontainer.
+  
+  This database name is used when:
+  - Starting the PostgreSQL container (line 56 in FlywayJooqConventionPlugin.kt)
+  - Connecting to the database for Flyway migrations
+  - Generating JOOQ code
+</ParamField>
+
+<ParamField path="username" type="string" default="test">
+  The username for connecting to the PostgreSQL database.
+  
+  Used for both Flyway migrations and JOOQ code generation.
+</ParamField>
+
+<ParamField path="password" type="string" default="test">
+  The password for connecting to the PostgreSQL database.
+  
+  Used for both Flyway migrations and JOOQ code generation.
+</ParamField>
+
+<ParamField path="postgresVersion" type="string" default="16-alpine">
+  The PostgreSQL Docker image tag to use for the Testcontainer.
+  
+  This determines which PostgreSQL version is used for code generation. The format is the Docker image tag (e.g., `16-alpine`, `15.2`, `14`).
+</ParamField>
+
+## When to Customize
+
+### Default Configuration
+
+For most projects, the default settings work perfectly:
+
+```kotlin
+jooqConventions {
+    // Defaults - no need to specify:
+    // databaseName = "testdb"
+    // username = "test"
+    // password = "test"
+    // postgresVersion = "16-alpine"
+}
+```
+
+### Different PostgreSQL Version
+
+If your production environment uses a specific PostgreSQL version, match it in code generation:
+
+```kotlin
+jooqConventions {
+    postgresVersion = "15.2"  // Match production PostgreSQL 15
+}
+```
+
+```kotlin
+jooqConventions {
+    postgresVersion = "14-alpine"  // Use PostgreSQL 14
+}
+```
+
+<Note>
+  Using the same PostgreSQL version for code generation as production ensures compatibility with PostgreSQL-specific features and data types.
+</Note>
+
+### Custom Database Credentials
+
+If you need specific credentials (e.g., for testing or local development):
+
+```kotlin
+jooqConventions {
+    databaseName = "myapp_dev"
+    username = "developer"
+    password = "dev_password_123"
+}
+```
+
+### Matching Existing Database Configuration
+
+If your application configuration expects specific database names:
+
+```kotlin
+jooqConventions {
+    databaseName = "orders_service"  // Match your service name
+    username = "orders_user"
+    password = "orders_pass"
+}
+```
+
+## How It Works
+
+When you run `./gradlew generateJooq`, the plugin:
+
+1. Starts a PostgreSQL Testcontainer using the specified `postgresVersion`
+2. Creates a database with the specified `databaseName`
+3. Configures authentication with `username` and `password`
+4. Runs Flyway migrations from `src/main/resources/db/migration`
+5. Generates JOOQ code from the migrated schema
+6. Stops and removes the container
+
+<Tip>
+  The database credentials are only used for the temporary Testcontainer. They don't affect your production or development database credentials.
+</Tip>
+
+## Examples
+
+### PostgreSQL 15 with Custom Name
+
+```kotlin
+jooqConventions {
+    postgresVersion = "15-alpine"
+    databaseName = "user_service"
+}
+```
+
+### Legacy PostgreSQL 12
+
+```kotlin
+jooqConventions {
+    postgresVersion = "12.18"  // Specific minor version
+}
+```
+
+### Full Custom Configuration
+
+```kotlin
+jooqConventions {
+    databaseName = "ecommerce_catalog"
+    username = "catalog_admin"
+    password = "secure_password"
+    postgresVersion = "16.2-alpine"
+}
+```

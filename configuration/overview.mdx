@@ -1,0 +1,92 @@
+---
+title: 'Configuration Overview'
+description: 'Configure the Flyway-JOOQ Convention Plugin using the jooqConventions extension block'
+---
+
+The Flyway-JOOQ Convention Plugin is configured through the `jooqConventions` extension block in your `build.gradle.kts` file.
+
+## Extension Block
+
+Add the configuration block to your build script:
+
+```kotlin
+jooqConventions {
+    // Database settings
+    databaseName = "testdb"
+    username = "test"
+    password = "test"
+    postgresVersion = "16-alpine"
+    
+    // JOOQ generation settings
+    inputSchema = "public"
+    targetPackage = "com.example.jooq.generated"
+    excludedTables = "flyway_schema_history"
+}
+```
+
+## Available Properties
+
+All properties are optional and have sensible defaults:
+
+<ParamField path="databaseName" type="string" default="testdb">
+  The name of the PostgreSQL database used in the Testcontainer for code generation.
+</ParamField>
+
+<ParamField path="username" type="string" default="test">
+  The username for the PostgreSQL database connection.
+</ParamField>
+
+<ParamField path="password" type="string" default="test">
+  The password for the PostgreSQL database connection.
+</ParamField>
+
+<ParamField path="postgresVersion" type="string" default="16-alpine">
+  The PostgreSQL Docker image version to use in Testcontainers.
+</ParamField>
+
+<ParamField path="inputSchema" type="string" default="public">
+  The database schema to generate JOOQ classes from.
+</ParamField>
+
+<ParamField path="targetPackage" type="string" default="com.example.jooq.generated">
+  The package name for generated JOOQ classes.
+</ParamField>
+
+<ParamField path="excludedTables" type="string" default="flyway_schema_history">
+  Tables to exclude from JOOQ code generation (pipe-separated pattern).
+</ParamField>
+
+## Configuration Categories
+
+The configuration properties are organized into two main categories:
+
+### Database Settings
+
+Control the Testcontainer PostgreSQL instance used for code generation:
+- `databaseName`
+- `username`
+- `password`
+- `postgresVersion`
+
+[Learn more about database settings →](/configuration/database-settings)
+
+### JOOQ Settings
+
+Control the JOOQ code generation behavior:
+- `inputSchema`
+- `targetPackage`
+- `excludedTables`
+
+[Learn more about JOOQ settings →](/configuration/jooq-settings)
+
+## Minimal Configuration
+
+For most projects, you only need to customize the target package:
+
+```kotlin
+jooqConventions {
+    targetPackage = "com.mycompany.myapp.db"
+}
+```
+
+All other properties use sensible defaults that work out of the box.

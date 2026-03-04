@@ -1,80 +1,268 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with the Flyway-JOOQ Convention Plugin in minutes - from zero to generated JOOQ classes
 ---
 
-## Get started in three steps
+This guide will walk you through setting up the plugin and generating your first JOOQ classes from Flyway migrations.
 
-Get your documentation site running locally and make your first customization.
+## Step 1: Apply the plugin
 
-### Step 1: Set up your local environment
+Add the plugin to your `build.gradle.kts`:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+```kotlin build.gradle.kts
+plugins {
+    id("io.github.usmanzaheer1995.flyway-jooq-convention-plugin") version "1.0.9"
+}
+```
+
+## Step 2: Configure the plugin
+
+Add the `jooqConventions` configuration block to your `build.gradle.kts`:
+
+```kotlin build.gradle.kts
+jooqConventions {
+    // Package where JOOQ code will be generated
+    targetPackage = "com.example.jooq.generated"
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    // PostgreSQL version for Testcontainer (optional)
+    postgresVersion = "16-alpine"
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    // Database credentials for temporary container (optional)
+    databaseName = "testdb"
+    username = "test"
+    password = "test"
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+    // Schema to generate code for (optional)
+    inputSchema = "public"
+    
+    // Tables to exclude from generation (optional)
+    excludedTables = "flyway_schema_history"
+}
+```
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  All configuration properties are optional. If you don't provide a `jooqConventions` block, sensible defaults will be used.
+</Note>
+
+### Configuration defaults
+
+If you omit any properties, the following defaults apply:
+
+| Property | Default Value |
+| :--- | :--- |
+| `targetPackage` | `com.example.jooq.generated` |
+| `postgresVersion` | `16-alpine` |
+| `databaseName` | `testdb` |
+| `username` | `test` |
+| `password` | `test` |
+| `inputSchema` | `public` |
+| `excludedTables` | `flyway_schema_history` |
+
+## Step 3: Create a migration file
+
+Create your first Flyway migration in the standard Flyway directory structure:
+
+```text
+src/main/resources/db/migration/
+  └── V1__Initial_schema.sql
+```
+
+Here's a sample migration that creates a users table:
+
+```sql V1__Initial_schema.sql
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_email ON users(email);
+```
+
+<Note>
+  Flyway migration files must follow the naming convention: `V{version}__{description}.sql`
+  
+  For example:
+  - `V1__Initial_schema.sql`
+  - `V2__Add_users_table.sql`
+  - `V3__Add_orders.sql`
+</Note>
+
+## Step 4: Generate JOOQ classes
+
+Run the JOOQ generation task:
+
+```bash
+./gradlew generateJooq
+```
+
+This command will:
+
+<Steps>
+  <Step title="Start PostgreSQL container">
+    Spin up a temporary PostgreSQL container using Testcontainers
+  </Step>
+  
+  <Step title="Run migrations">
+    Apply all migrations from `src/main/resources/db/migration` to the container
+  </Step>
+  
+  <Step title="Generate code">
+    Generate JOOQ Kotlin classes based on the schema into `build/generated-src/jooq/main`
+  </Step>
+  
+  <Step title="Clean up">
+    Stop and remove the PostgreSQL container
+  </Step>
+</Steps>
+
+You should see output similar to:
+
+```
+Starting PostgreSQL container...
+PostgreSQL container started: jdbc:postgresql://localhost:xxxxx/testdb
+Running Flyway migrations...
+Flyway migrations completed: 1 migrations executed
+Configuring jOOQ to use container: jdbc:postgresql://localhost:xxxxx/testdb
+
+> Task :generateJooq
+
+PostgreSQL container stopped and removed
+```
+
+## Step 5: Use the generated code
+
+The generated JOOQ classes are now available in your project. Here's an example of how to use them:
+
+```kotlin
+import com.example.jooq.generated.Tables.USERS
+import org.jooq.DSLContext
+import org.jooq.impl.DSL
+
+fun main() {
+    val dsl: DSLContext = DSL.using(connection, SQLDialect.POSTGRES)
+    
+    // Type-safe query
+    val users = dsl
+        .selectFrom(USERS)
+        .where(USERS.USERNAME.eq("john.doe"))
+        .fetch()
+    
+    println(users)
+}
+```
+
+<Note>
+  The generated code is automatically added to the Kotlin source set, so your IDE will recognize it immediately.
+</Note>
+
+## Automatic generation on build
+
+The plugin automatically hooks into the Gradle build lifecycle. The `compileKotlin` task depends on `generateJooq`, so JOOQ code is regenerated whenever you build your project:
+
+```bash
+./gradlew build
+```
+
+This ensures your JOOQ classes are always up-to-date with your migrations.
+
+## Adding more migrations
+
+As your schema evolves, simply add new migration files:
+
+```text
+src/main/resources/db/migration/
+  ├── V1__Initial_schema.sql
+  ├── V2__Add_orders_table.sql
+  └── V3__Add_user_preferences.sql
+```
+
+Example of a second migration:
+
+```sql V2__Add_orders_table.sql
+CREATE TABLE orders (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    total_amount DECIMAL(10, 2) NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+CREATE INDEX idx_orders_status ON orders(status);
+```
+
+Run `./gradlew generateJooq` again to update the generated code with the new table.
+
+## Advanced configuration
+
+### Custom PostgreSQL version
+
+If you need a specific PostgreSQL version:
+
+```kotlin build.gradle.kts
+jooqConventions {
+    postgresVersion = "15-alpine"  // or "14", "13", etc.
+}
+```
+
+### Multiple schemas
+
+To generate code for a specific schema:
+
+```kotlin build.gradle.kts
+jooqConventions {
+    inputSchema = "myapp"  // default is "public"
+}
+```
+
+### Excluding tables
+
+To exclude specific tables from code generation (regex pattern):
+
+```kotlin build.gradle.kts
+jooqConventions {
+    excludedTables = "flyway_schema_history|temp_.*"  // excludes flyway history and temp tables
+}
+```
+
+## Troubleshooting
+
+### Docker not running
+
+If you see an error about Docker:
+
+<Warning>
+  Ensure Docker is installed and running. Testcontainers requires Docker to create the temporary PostgreSQL database.
+</Warning>
+
+### Migration not found
+
+If migrations aren't being applied, verify:
+
+1. Migrations are in `src/main/resources/db/migration/`
+2. Files follow the naming convention: `V{version}__{description}.sql`
+3. File extensions are `.sql` (not `.txt` or other)
+
+### Generated code not visible in IDE
+
+If your IDE doesn't recognize the generated code:
+
+1. Refresh Gradle: `./gradlew --refresh-dependencies`
+2. Rebuild the project: `./gradlew clean build`
+3. Reload the Gradle project in your IDE (e.g., in IntelliJ IDEA: Gradle tool window > Reload button)
+
+## What's next?
+
+You now have JOOQ code generation set up! Here are some next steps:
+
+- Learn more about [JOOQ's type-safe queries](https://www.jooq.org/doc/latest/manual/)
+- Explore advanced JOOQ configuration options
+- Set up continuous integration to regenerate code on every build
+
+<Note>
+  The generated JOOQ code is in `build/generated-src/jooq/main`, which is automatically cleaned when you run `./gradlew clean`.
 </Note>

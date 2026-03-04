@@ -1,0 +1,155 @@
+---
+title: How it works
+description: Understand the three-phase workflow that automates JOOQ code generation from Flyway migrations
+---
+
+The Flyway-JOOQ Convention Plugin automates the entire process of generating type-safe database code from your migration files. It orchestrates three distinct phases that run automatically when you build your project.
+
+## The three-phase workflow
+
+The plugin implements a carefully choreographed task dependency chain:
+
+```kotlin
+tasks.named("generateJooq") {
+    dependsOn(setupDatabaseForJooq)
+    finalizedBy(stopPostgresContainer)
+}
+
+tasks.named("compileKotlin") {
+    dependsOn("generateJooq")
+}
+```
+
+This creates the following execution flow:
+
+**compileKotlin** → **generateJooq** → **setupDatabaseForJooq** (runs first) → **stopPostgresContainer** (cleanup)
+
+### Phase 1: setupDatabaseForJooq
+
+The first phase prepares a fresh database with your schema applied:
+
+```kotlin
+val setupDatabaseForJooq = tasks.register("setupDatabaseForJooq") {
+    group = "jooq"
+    description = "Starts PostgreSQL container and runs Flyway migrations for jOOQ generation"
+
+    doFirst {
+        println("Starting PostgreSQL container...")
+        postgresContainer = PostgreSQLContainer<Nothing>("postgres:${jooqConventions.postgresVersion}").apply {
+            withDatabaseName(jooqConventions.databaseName)
+            withUsername(jooqConventions.username)
+            withPassword(jooqConventions.password)
+            start()
+        }
+
+        containerJdbcUrl = postgresContainer!!.jdbcUrl
+        containerUsername = postgresContainer!!.username
+        containerPassword = postgresContainer!!.password
+
+        println("PostgreSQL container started: $containerJdbcUrl")
+        println("Running Flyway migrations...")
+
+        val migrationsDir = file("src/main/resources/db/migration")
+        val flyway = Flyway.configure()
+            .dataSource(containerJdbcUrl, containerUsername, containerPassword)
+            .locations("filesystem:${migrationsDir.absolutePath}")
+            .load()
+
+        val result = flyway.migrate()
+        println("Flyway migrations completed: ${result.migrationsExecuted} migrations executed")
+    }
+}
+```
+
+This task:
+1. Starts a PostgreSQL Testcontainer with configured credentials
+2. Captures the container's JDBC URL, username, and password
+3. Configures Flyway to point to `src/main/resources/db/migration`
+4. Executes all pending migrations to build your schema
+
+### Phase 2: generateJooq
+
+Once the database is ready, the JOOQ code generation runs automatically:
+
+```kotlin
+tasks.named("generateJooq") {
+    dependsOn(setupDatabaseForJooq)
+    finalizedBy(stopPostgresContainer)
+
+    doFirst {
+        if (containerJdbcUrl != null) {
+            println("Configuring jOOQ to use container: $containerJdbcUrl")
+
+            val jooqExt = project.extensions.getByType(JooqExtension::class.java)
+            jooqExt.configurations.getByName("main").jooqConfiguration.apply {
+                jdbc.url = containerJdbcUrl
+                jdbc.user = containerUsername
+                jdbc.password = containerPassword
+            }
+        }
+    }
+}
+```
+
+The plugin dynamically injects the container's connection details into JOOQ's configuration just before code generation runs. This ensures JOOQ introspects the exact schema produced by your migrations.
+
+The generated code is placed in `build/generated-src/jooq/main` and automatically added to your Kotlin source sets:
+
+```kotlin
+configure<KotlinProjectExtension> {
+    sourceSets {
+        getByName("main") {
+            kotlin.srcDir("build/generated-src/jooq/main")
+        }
+    }
+}
+```
+
+### Phase 3: stopPostgresContainer
+
+After code generation completes (or fails), cleanup runs automatically:
+
+```kotlin
+val stopPostgresContainer = tasks.register("stopPostgresContainer") {
+    group = "jooq"
+    description = "Stops PostgreSQL testcontainer"
+
+    doLast {
+        postgresContainer?.stop()
+        postgresContainer?.close()
+        postgresContainer = null
+        println("PostgreSQL container stopped and removed")
+    }
+}
+```
+
+The `finalizedBy` relationship guarantees that the container is stopped and removed, even if code generation fails. This prevents orphaned containers from consuming system resources.
+
+## Automatic integration with compilation
+
+Because `compileKotlin` depends on `generateJooq`, running any build task automatically triggers the entire workflow:
+
+```bash
+./gradlew build
+# Automatically runs: setupDatabaseForJooq → generateJooq → stopPostgresContainer → compileKotlin
+```
+
+You can also run code generation manually:
+
+```bash
+./gradlew generateJooq
+```
+
+## Clean task integration
+
+The plugin ensures generated code is removed during clean builds:
+
+```kotlin
+tasks.named("clean") {
+    doLast {
+        delete("build/generated-src/jooq")
+    }
+}
+```
+
+This guarantees a fresh code generation on the next build.

@@ -1,0 +1,127 @@
+---
+title: Extension API Reference
+description: Complete API reference for the JooqConventionsExtension configuration
+---
+
+The `jooqConventions` extension allows you to customize how the plugin generates JOOQ code from your Flyway migrations. All properties have sensible defaults and are optional.
+
+## Configuration Block
+
+```kotlin
+jooqConventions {
+    databaseName = "testdb"
+    username = "test"
+    password = "test"
+    postgresVersion = "16-alpine"
+    inputSchema = "public"
+    targetPackage = "com.example.jooq.generated"
+    excludedTables = "flyway_schema_history"
+}
+```
+
+## Properties
+
+<ParamField path="databaseName" type="String" default="testdb">
+  The name of the PostgreSQL database to create in the Testcontainers instance. This database will be created automatically when the container starts and will be used for running Flyway migrations.
+  
+  ```kotlin
+  jooqConventions {
+      databaseName = "myapp_db"
+  }
+  ```
+</ParamField>
+
+<ParamField path="username" type="String" default="test">
+  The username for the PostgreSQL database. This user will have full access to the database and will be used by both Flyway and JOOQ during code generation.
+  
+  ```kotlin
+  jooqConventions {
+      username = "jooq_user"
+  }
+  ```
+</ParamField>
+
+<ParamField path="password" type="String" default="test">
+  The password for the PostgreSQL database user. Used for authentication during migrations and code generation.
+  
+  ```kotlin
+  jooqConventions {
+      password = "secure_password_123"
+  }
+  ```
+</ParamField>
+
+<ParamField path="postgresVersion" type="String" default="16-alpine">
+  The PostgreSQL Docker image version to use with Testcontainers. Supports any valid PostgreSQL image tag from Docker Hub. Using Alpine variants (e.g., "16-alpine") provides smaller image sizes.
+  
+  ```kotlin
+  jooqConventions {
+      postgresVersion = "15-alpine"  // Use PostgreSQL 15
+      // or
+      postgresVersion = "17"          // Use latest PostgreSQL 17
+  }
+  ```
+</ParamField>
+
+<ParamField path="inputSchema" type="String" default="public">
+  The PostgreSQL schema to use as input for JOOQ code generation. JOOQ will only generate code for tables, views, and other database objects in this schema.
+  
+  ```kotlin
+  jooqConventions {
+      inputSchema = "myapp"
+  }
+  ```
+  
+  <Tip>
+    If you use multiple schemas, you'll need to generate code for each schema separately. See the [examples](/reference/examples#multiple-schemas) for guidance.
+  </Tip>
+</ParamField>
+
+<ParamField path="targetPackage" type="String" default="com.example.jooq.generated">
+  The Java/Kotlin package name where JOOQ will generate all database classes, tables, records, and POJOs. This should follow standard package naming conventions.
+  
+  ```kotlin
+  jooqConventions {
+      targetPackage = "io.mycompany.database.jooq"
+  }
+  ```
+  
+  Generated code will be placed in `build/generated-src/jooq/main` with the specified package structure.
+</ParamField>
+
+<ParamField path="excludedTables" type="String" default="flyway_schema_history">
+  A regular expression pattern for tables to exclude from JOOQ code generation. By default, excludes the Flyway metadata table. Supports JOOQ's exclusion pattern syntax.
+  
+  ```kotlin
+  jooqConventions {
+      // Exclude Flyway table and all temporary tables
+      excludedTables = "flyway_schema_history|.*_temp"
+      
+      // Exclude multiple patterns
+      excludedTables = "flyway_schema_history|audit_.*|.*_backup"
+      
+      // Don't exclude anything
+      excludedTables = ""
+  }
+  ```
+  
+  <Warning>
+    Be careful when modifying this property. Including the `flyway_schema_history` table in your JOOQ code is usually unnecessary and can clutter your generated code.
+  </Warning>
+</ParamField>
+
+## Source Reference
+
+The extension is defined in the plugin source code at:
+`FlywayJooqConventionPlugin.kt:215-223`
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Examples" icon="code" href="/reference/examples">
+    See real-world configuration examples
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get started with basic setup
+  </Card>
+</CardGroup>

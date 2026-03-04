@@ -1,0 +1,120 @@
+---
+title: stopPostgresContainer Task
+description: Stops and removes the PostgreSQL Testcontainer after JOOQ code generation completes
+---
+
+The `stopPostgresContainer` task handles cleanup of the PostgreSQL Testcontainer that was started by the `setupDatabaseForJooq` task. It ensures proper resource cleanup after JOOQ code generation.
+
+## What It Does
+
+This task performs container cleanup:
+
+1. **Stops the Container** - Gracefully stops the running PostgreSQL container
+2. **Closes Resources** - Releases all associated resources
+3. **Clears References** - Nullifies internal container references to prevent memory leaks
+
+## Task Implementation
+
+The task is registered in `FlywayJooqConventionPlugin.kt` (lines 83-94):
+
+```kotlin
+val stopPostgresContainer = tasks.register("stopPostgresContainer") {
+    group = "jooq"
+    description = "Stops PostgreSQL testcontainer"
+
+    doLast {
+        postgresContainer?.stop()
+        postgresContainer?.close()
+        postgresContainer = null
+        println("PostgreSQL container stopped and removed")
+    }
+}
+```
+
+## When It Runs
+
+The task executes automatically as a finalizer for `generateJooq` (line 166):
+
+```kotlin
+tasks.named("generateJooq") {
+    dependsOn(setupDatabaseForJooq)
+    finalizedBy(stopPostgresContainer)  // Cleanup happens automatically
+}
+```
+
+This means:
+- **After** `generateJooq` completes (successfully or with errors)
+- **During build** - Cleanup happens automatically after code generation
+- **Always executes** - Even if `generateJooq` fails, the container is cleaned up
+
+## Container Lifecycle
+
+The complete lifecycle is:
+
+```
+1. setupDatabaseForJooq  →  Starts container
+2. generateJooq          →  Uses container to introspect schema
+3. stopPostgresContainer →  Stops and removes container
+```
+
+Using `finalizedBy` ensures the container is always cleaned up, preventing:
+- Resource leaks
+- Port conflicts in subsequent runs
+- Orphaned Docker containers
+
+## Manual Execution
+
+While the task runs automatically, you can execute it manually:
+
+```bash
+./gradlew stopPostgresContainer
+```
+
+**Note**: This is only useful if you ran `setupDatabaseForJooq` manually and want to clean up without running `generateJooq`.
+
+## Output Messages
+
+When the task runs, you'll see:
+
+```
+> Task :stopPostgresContainer
+PostgreSQL container stopped and removed
+```
+
+## Safe Cleanup
+
+The task uses safe null-checking (`postgresContainer?.stop()`) to handle cases where:
+- The container was never started
+- The task runs multiple times
+- The container already stopped for another reason
+
+This prevents errors and ensures idempotent behavior.
+
+## Why This Matters
+
+Testcontainers can consume significant system resources:
+- **Memory** - Each container allocates RAM for PostgreSQL
+- **Ports** - Containers bind to random available ports
+- **Docker Resources** - Containers use Docker daemon capacity
+
+Proper cleanup ensures:
+- Your build doesn't leave orphaned containers
+- Subsequent builds don't encounter port conflicts
+- System resources are released promptly
+
+## Troubleshooting
+
+If you see orphaned containers (containers that weren't cleaned up), you can manually remove them:
+
+```bash
+# List all containers (including stopped ones)
+docker ps -a
+
+# Remove specific container
+docker rm -f <container-id>
+
+# Remove all stopped containers
+docker container prune
+```
+
+The plugin uses Testcontainers' default behavior, which includes automatic cleanup via the [Ryuk container](https://www.testcontainers.org/features/configuration/#customizing-ryuk-resource-reaper). This provides an additional safety net for cleanup even if the task fails to execute.

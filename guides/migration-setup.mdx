@@ -1,0 +1,290 @@
+---
+title: "Setting Up Flyway Migrations"
+description: "Learn how to organize and structure Flyway migrations for optimal JOOQ code generation"
+---
+
+The Flyway-JOOQ Convention Plugin uses your Flyway migration scripts as the source of truth for generating JOOQ code. Proper migration organization ensures smooth code generation and maintainable database schemas.
+
+## Directory Structure
+
+The plugin expects your Flyway migration scripts to be located in the standard Flyway directory:
+
+```text
+src/main/resources/db/migration/
+├── V1__initial_schema.sql
+├── V2__add_users_table.sql
+├── V3__add_posts_table.sql
+└── V4__add_user_email_index.sql
+```
+
+<Note>
+The migration directory path is hardcoded in the plugin at **FlywayJooqConventionPlugin.kt:69**. The plugin uses `src/main/resources/db/migration` and loads it via filesystem location.
+</Note>
+
+## Naming Conventions
+
+Flyway uses a specific naming pattern for migration files:
+
+```text
+V{version}__{description}.sql
+```
+
+- **V**: Prefix indicating a versioned migration (required)
+- **{version}**: Numeric version (e.g., 1, 2, 1.1, 2023.01.15)
+- **__**: Two underscores separating version from description (required)
+- **{description}**: Human-readable description using underscores for spaces
+- **.sql**: File extension
+
+### Valid Examples
+
+```text
+V1__initial_schema.sql
+V2__add_users_table.sql
+V3__create_indexes.sql
+V1.1__hotfix_user_column.sql
+V2023.03.15__quarterly_schema_update.sql
+```
+
+### Invalid Examples
+
+```text
+1__initial_schema.sql           ❌ Missing 'V' prefix
+V1_initial_schema.sql           ❌ Single underscore instead of double
+V2__add-users-table.sql         ❌ Hyphens in description (use underscores)
+v3__create_indexes.sql          ❌ Lowercase 'v'
+```
+
+## Creating Your First Migration
+
+Here's a complete example of an initial schema migration:
+
+**V1__initial_schema.sql**
+```sql
+-- Create users table
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Create posts table
+CREATE TABLE posts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(200) NOT NULL,
+    content TEXT,
+    published BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Create indexes
+CREATE INDEX idx_posts_user_id ON posts(user_id);
+CREATE INDEX idx_posts_published ON posts(published);
+```
+
+## Best Practices for JOOQ-Compatible Migrations
+
+### 1. Use Explicit Column Types
+
+Be explicit about column types to ensure JOOQ generates the correct Java/Kotlin types:
+
+```sql
+-- Good: Explicit types
+CREATE TABLE products (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    price NUMERIC(10, 2) NOT NULL,
+    in_stock BOOLEAN NOT NULL DEFAULT TRUE,
+    metadata JSONB
+);
+
+-- Avoid: Ambiguous types
+CREATE TABLE products (
+    id SERIAL,              -- Use BIGSERIAL for large tables
+    name TEXT,              -- Be specific: VARCHAR(100)
+    price DECIMAL,          -- Specify precision: NUMERIC(10, 2)
+    in_stock BOOL           -- Use full name: BOOLEAN
+);
+```
+
+### 2. Define Primary Keys and Constraints
+
+JOOQ generates better code when constraints are explicitly defined:
+
+```sql
+CREATE TABLE orders (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    order_number VARCHAR(50) NOT NULL UNIQUE,
+    total_amount NUMERIC(12, 2) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    
+    CONSTRAINT fk_orders_user FOREIGN KEY (user_id) 
+        REFERENCES users(id) ON DELETE RESTRICT,
+    CONSTRAINT chk_total_positive CHECK (total_amount >= 0),
+    CONSTRAINT chk_status_valid CHECK (status IN ('pending', 'completed', 'cancelled'))
+);
+```
+
+### 3. Use NOT NULL Appropriately
+
+JOOQ's Kotlin generator uses nullability information to generate null-safe code:
+
+```sql
+CREATE TABLE customer_profiles (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,           -- Required field → non-null in Kotlin
+    bio TEXT,                          -- Optional field → nullable String?
+    avatar_url VARCHAR(500),           -- Optional → nullable String?
+    phone_number VARCHAR(20),          -- Optional → nullable String?
+    verified_at TIMESTAMP              -- Optional → nullable Instant?
+);
+```
+
+<Tip>
+With the plugin's configuration (**FlywayJooqConventionPlugin.kt:145-147**), JOOQ generates Kotlin code with proper nullability:
+- `NOT NULL` columns → non-nullable Kotlin types
+- Nullable columns → nullable Kotlin types (`String?`, `Int?`, etc.)
+</Tip>
+
+### 4. Consider JSONB and INET Types
+
+The plugin automatically maps PostgreSQL-specific types to compatible Java types:
+
+```sql
+CREATE TABLE api_logs (
+    id BIGSERIAL PRIMARY KEY,
+    request_data JSONB NOT NULL,        -- Mapped to String in JOOQ
+    response_data JSONB,                -- Mapped to String? in JOOQ
+    client_ip INET NOT NULL,            -- Mapped to String in JOOQ
+    created_at TIMESTAMP NOT NULL
+);
+```
+
+<Warning>
+JSONB and INET types are mapped to `varchar` by the plugin (**FlywayJooqConventionPlugin.kt:123-136**). You'll need to handle JSON serialization/deserialization in your application code. See the [Custom Types](/guides/custom-types) guide for details.
+</Warning>
+
+### 5. Exclude Flyway Metadata Table
+
+The plugin automatically excludes `flyway_schema_history` from code generation:
+
+```kotlin
+// Default configuration (FlywayJooqConventionPlugin.kt:121)
+excludes = jooqConventions.excludedTables  // Default: "flyway_schema_history"
+```
+
+To exclude additional tables, configure in your `build.gradle.kts`:
+
+```kotlin
+jooqConventions {
+    excludedTables = "flyway_schema_history|temp_.*|staging_.*"
+}
+```
+
+## Migration Execution Order
+
+When you run `./gradlew generateJooq`, the plugin:
+
+1. **Starts PostgreSQL container** (FlywayJooqConventionPlugin.kt:54-60)
+2. **Runs Flyway migrations** in version order (FlywayJooqConventionPlugin.kt:71-79)
+3. **Generates JOOQ code** against the migrated schema
+4. **Stops the container** (FlywayJooqConventionPlugin.kt:89-93)
+
+```text
+V1__initial_schema.sql → Applied first
+V2__add_users.sql → Applied second
+V3__add_posts.sql → Applied third
+...
+JOOQ generation → Reflects final schema state
+```
+
+## Incremental Migrations
+
+**Never modify existing migration files.** Always create new migrations for schema changes:
+
+```sql
+-- V4__add_user_profile_fields.sql
+ALTER TABLE users
+    ADD COLUMN first_name VARCHAR(50),
+    ADD COLUMN last_name VARCHAR(50),
+    ADD COLUMN date_of_birth DATE;
+
+-- V5__make_user_names_required.sql
+UPDATE users SET first_name = 'Unknown' WHERE first_name IS NULL;
+UPDATE users SET last_name = 'Unknown' WHERE last_name IS NULL;
+
+ALTER TABLE users
+    ALTER COLUMN first_name SET NOT NULL,
+    ALTER COLUMN last_name SET NOT NULL;
+```
+
+<Note>
+Each time you add a new migration, run `./gradlew generateJooq` to regenerate JOOQ classes reflecting the updated schema.
+</Note>
+
+## Testing Your Migrations
+
+Before generating JOOQ code, verify your migrations are valid:
+
+```bash
+# Test migration execution
+./gradlew setupDatabaseForJooq
+
+# Check the output for:
+# ✓ PostgreSQL container started
+# ✓ Flyway migrations completed: X migrations executed
+
+# Clean up
+./gradlew stopPostgresContainer
+```
+
+## Common Migration Patterns
+
+### Adding a New Table
+
+```sql
+-- V6__create_comments_table.sql
+CREATE TABLE comments (
+    id BIGSERIAL PRIMARY KEY,
+    post_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    
+    CONSTRAINT fk_comments_post FOREIGN KEY (post_id) 
+        REFERENCES posts(id) ON DELETE CASCADE,
+    CONSTRAINT fk_comments_user FOREIGN KEY (user_id) 
+        REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_comments_post_id ON comments(post_id);
+CREATE INDEX idx_comments_user_id ON comments(user_id);
+```
+
+### Adding an Enum Type
+
+```sql
+-- V7__create_user_role_enum.sql
+CREATE TYPE user_role AS ENUM ('admin', 'moderator', 'user');
+
+ALTER TABLE users
+    ADD COLUMN role user_role NOT NULL DEFAULT 'user';
+```
+
+### Creating Indexes for Performance
+
+```sql
+-- V8__add_search_indexes.sql
+CREATE INDEX idx_users_email_lower ON users(LOWER(email));
+CREATE INDEX idx_posts_title_gin ON posts USING GIN(to_tsvector('english', title));
+CREATE INDEX idx_users_created_at_desc ON users(created_at DESC);
+```
+
+## Next Steps
+
+- Learn about [custom type mappings](/guides/custom-types) for JSONB and INET
+- See [troubleshooting tips](/guides/troubleshooting) for common migration errors
+- Run `./gradlew generateJooq` to generate your JOOQ code

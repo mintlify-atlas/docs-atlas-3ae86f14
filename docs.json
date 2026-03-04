@@ -1,122 +1,78 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Flyway-JOOQ Convention Plugin",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#242b2c",
+    "light": "#040404",
+    "dark": "#6a6a6d"
   },
-  "favicon": "/favicon.svg",
-  "navigation": {
-    "tabs": [
-      {
-        "tab": "Guides",
-        "groups": [
-          {
-            "group": "Getting started",
-            "pages": [
-              "index",
-              "quickstart",
-              "development"
-            ]
-          },
-          {
-            "group": "Customization",
-            "pages": [
-              "essentials/settings",
-              "essentials/navigation"
-            ]
-          },
-          {
-            "group": "Writing content",
-            "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
-            ]
-          },
-          {
-            "group": "AI tools",
-            "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "API reference",
-        "groups": [
-          {
-            "group": "API documentation",
-            "pages": [
-              "api-reference/introduction"
-            ]
-          },
-          {
-            "group": "Endpoint examples",
-            "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
-            ]
-          }
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
+  "favicon": "https://media.brand.dev/b5ecee18-a3ea-475a-82b9-32288fb77a00.png",
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "https://media.brand.dev/679d5cea-bc57-49d4-bde4-e977767f8c25.svg",
+    "dark": "https://media.brand.dev/679d5cea-bc57-49d4-bde4-e977767f8c25.svg"
   },
   "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
     "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
+      "type": "github",
+      "href": "https://github.com/usmanzaheer1995/flyway-jooq-convention-plugin"
     }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/usmanzaheer1995/flyway-jooq-convention-plugin"
     }
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Core Concepts",
+        "pages": [
+          "concepts/how-it-works",
+          "concepts/architecture",
+          "concepts/testcontainers"
+        ]
+      },
+      {
+        "group": "Configuration",
+        "pages": [
+          "configuration/overview",
+          "configuration/database-settings",
+          "configuration/jooq-settings"
+        ]
+      },
+      {
+        "group": "Tasks",
+        "pages": [
+          "tasks/setup-database",
+          "tasks/generate-jooq",
+          "tasks/stop-container"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/migration-setup",
+          "guides/custom-types",
+          "guides/troubleshooting"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/extension-api",
+          "reference/dependencies",
+          "reference/examples"
+        ]
+      }
+    ]
   }
 }

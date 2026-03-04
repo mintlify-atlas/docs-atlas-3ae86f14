@@ -1,0 +1,587 @@
+---
+title: "Troubleshooting"
+description: "Solutions for common issues with the Flyway-JOOQ Convention Plugin"
+---
+
+This guide covers common issues you may encounter when using the Flyway-JOOQ Convention Plugin and their solutions.
+
+## Docker and Testcontainers Issues
+
+### Docker Not Running
+
+**Error Message:**
+```text
+Could not start container
+Caused by: java.lang.IllegalStateException: 
+  Could not find a valid Docker environment
+```
+
+**Cause:**  
+The plugin uses Testcontainers to spin up a PostgreSQL container (**FlywayJooqConventionPlugin.kt:54-60**). This requires Docker to be running.
+
+**Solution:**
+
+1. **Verify Docker is installed:**
+   ```bash
+   docker --version
+   ```
+
+2. **Start Docker daemon:**
+   - **macOS/Windows**: Open Docker Desktop
+   - **Linux**: 
+     ```bash
+     sudo systemctl start docker
+     # Or
+     sudo service docker start
+     ```
+
+3. **Verify Docker is running:**
+   ```bash
+   docker ps
+   ```
+
+4. **Check Docker permissions (Linux only):**
+   ```bash
+   # Add your user to the docker group
+   sudo usermod -aG docker $USER
+   
+   # Log out and back in, then verify
+   docker ps
+   ```
+
+<Note>
+The plugin requires **Docker** to be available and running before executing `./gradlew generateJooq`. Testcontainers cannot function without Docker.
+</Note>
+
+### Docker Out of Memory
+
+**Error Message:**
+```text
+Container exited with code 137
+```
+
+**Cause:**  
+The PostgreSQL container ran out of memory.
+
+**Solution:**
+
+Increase Docker memory allocation:
+- **Docker Desktop**: Settings → Resources → Memory (increase to at least 4GB)
+- **Linux**: Configure Docker daemon memory limits in `/etc/docker/daemon.json`
+
+### Container Already Exists
+
+**Error Message:**
+```text
+Conflict. The container name "/testcontainers-postgres-*" is already in use
+```
+
+**Cause:**  
+A previous container wasn't properly cleaned up.
+
+**Solution:**
+
+```bash
+# List all containers
+docker ps -a
+
+# Remove the conflicting container
+docker rm -f testcontainers-postgres-<id>
+
+# Or remove all stopped containers
+docker container prune
+```
+
+<Tip>
+The plugin automatically stops and removes containers via the `stopPostgresContainer` task (**FlywayJooqConventionPlugin.kt:89-93**). If generation fails, manually run cleanup:
+```bash
+./gradlew stopPostgresContainer
+```
+</Tip>
+
+## Flyway Migration Errors
+
+### Migration Files Not Found
+
+**Error Message:**
+```text
+Flyway migrations completed: 0 migrations executed
+```
+
+**Cause:**  
+The plugin looks for migrations in `src/main/resources/db/migration` (**FlywayJooqConventionPlugin.kt:69**).
+
+**Solution:**
+
+1. **Verify directory structure:**
+   ```bash
+   ls -la src/main/resources/db/migration/
+   ```
+
+2. **Check file naming:**
+   ```text
+   ✓ V1__initial_schema.sql
+   ✓ V2__add_users.sql
+   ✗ 1__initial_schema.sql      (missing V prefix)
+   ✗ V1_initial_schema.sql      (single underscore)
+   ✗ migration.sql              (no version)
+   ```
+
+3. **Ensure files are in resources:**
+   ```text
+   src/
+   └── main/
+       └── resources/
+           └── db/
+               └── migration/
+                   ├── V1__initial_schema.sql
+                   └── V2__add_users.sql
+   ```
+
+<Warning>
+The migration directory path is hardcoded in the plugin. It **must** be `src/main/resources/db/migration`. Other locations are not supported.
+</Warning>
+
+### SQL Syntax Error in Migration
+
+**Error Message:**
+```text
+Migration V2__add_users.sql failed
+SQL State  : 42601
+Error Code : 0
+Message    : ERROR: syntax error at or near "TABL"
+```
+
+**Cause:**  
+Invalid SQL syntax in migration file.
+
+**Solution:**
+
+1. **Review the migration file:**
+   ```bash
+   cat src/main/resources/db/migration/V2__add_users.sql
+   ```
+
+2. **Test SQL syntax manually:**
+   ```bash
+   # Start a temporary PostgreSQL container
+   docker run --rm -e POSTGRES_PASSWORD=test -p 5432:5432 postgres:16-alpine
+   
+   # Connect and test your SQL
+   psql -h localhost -U postgres -d postgres
+   ```
+
+3. **Common syntax issues:**
+   ```sql
+   -- Wrong: Missing comma
+   CREATE TABLE users (
+       id SERIAL PRIMARY KEY
+       name VARCHAR(100)  -- ❌ Missing comma
+   );
+   
+   -- Correct:
+   CREATE TABLE users (
+       id SERIAL PRIMARY KEY,
+       name VARCHAR(100)
+   );
+   ```
+
+### Migration Checksum Mismatch
+
+**Error Message:**
+```text
+Validate failed: Migration checksum mismatch for migration version 2
+```
+
+**Cause:**  
+You modified an already-applied migration file.
+
+**Solution:**
+
+<Warning>
+**Never modify existing migration files!** Flyway tracks checksums to detect changes.
+</Warning>
+
+Instead, create a new migration:
+
+```bash
+# Don't modify: V2__add_users.sql
+# Instead create: V3__update_users.sql
+```
+
+If you must reset (development only):
+```bash
+# This will regenerate everything from scratch
+./gradlew clean generateJooq
+```
+
+## JOOQ Generation Failures
+
+### JDBC Connection Failed
+
+**Error Message:**
+```text
+Error executing jOOQ code generation tool
+Caused by: org.jooq.exception.DataAccessException: 
+  SQL []; Connection to localhost:5432 refused
+```
+
+**Cause:**  
+JOOQ generator cannot connect to the PostgreSQL container.
+
+**Solution:**
+
+1. **Verify container is running during generation:**
+   The `generateJooq` task depends on `setupDatabaseForJooq` (**FlywayJooqConventionPlugin.kt:165**)
+
+2. **Check task execution order:**
+   ```bash
+   ./gradlew generateJooq --info
+   ```
+   
+   You should see:
+   ```text
+   > Task :setupDatabaseForJooq
+   Starting PostgreSQL container...
+   PostgreSQL container started: jdbc:postgresql://localhost:xxxxx/testdb
+   
+   > Task :generateJooq
+   Configuring jOOQ to use container: jdbc:postgresql://localhost:xxxxx/testdb
+   ```
+
+3. **Ensure no manual task execution:**
+   ```bash
+   # Don't run generateJooq alone without setup
+   ./gradlew generateJooq  # ✓ Dependencies handled automatically
+   ```
+
+### Package Name Issues
+
+**Error Message:**
+```text
+Generated files appear in wrong package
+```
+
+**Cause:**  
+Incorrect `targetPackage` configuration.
+
+**Solution:**
+
+Configure the target package in `build.gradle.kts`:
+
+```kotlin
+jooqConventions {
+    targetPackage = "com.yourcompany.jooq.generated"  // Change this
+}
+```
+
+Default is `com.example.jooq.generated` (**FlywayJooqConventionPlugin.kt:151**).
+
+After changing, regenerate:
+```bash
+./gradlew clean generateJooq
+```
+
+### No Tables Generated
+
+**Error Message:**
+```text
+Generation completed but no table classes found
+```
+
+**Cause:**  
+Tables may be in wrong schema or excluded by configuration.
+
+**Solution:**
+
+1. **Check schema configuration:**
+   ```kotlin
+   jooqConventions {
+       inputSchema = "public"  // Default (FlywayJooqConventionPlugin.kt:120)
+   }
+   ```
+
+2. **Verify tables aren't excluded:**
+   ```kotlin
+   jooqConventions {
+       excludedTables = "flyway_schema_history"  // Default
+       // Don't accidentally exclude your tables:
+       // excludedTables = ".*"  // ❌ This excludes everything!
+   }
+   ```
+
+3. **Check migration actually created tables:**
+   ```bash
+   ./gradlew setupDatabaseForJooq
+   # Check output: "Flyway migrations completed: X migrations executed"
+   ```
+
+### Type Mapping Errors
+
+**Error Message:**
+```text
+Error: Type 'jsonb' not found
+```
+
+**Cause:**  
+PostgreSQL-specific types need explicit mapping.
+
+**Solution:**
+
+The plugin automatically maps JSONB and INET to varchar (**FlywayJooqConventionPlugin.kt:123-136**). If you see this error:
+
+1. **Verify plugin is applied:**
+   ```kotlin
+   plugins {
+       id("io.github.usmanzaheer1995.flyway-jooq-convention-plugin") version "1.0.9"
+   }
+   ```
+
+2. **Check for conflicting JOOQ configuration:**
+   Remove manual JOOQ configuration that might override forced types.
+
+3. **For other custom types**, see [Custom Types Guide](/guides/custom-types).
+
+## Port Conflict Issues
+
+### Port Already in Use
+
+**Error Message:**
+```text
+Bind for 0.0.0.0:5432 failed: port is already allocated
+```
+
+**Cause:**  
+Another PostgreSQL instance is using port 5432.
+
+**Solution:**
+
+Testcontainers automatically assigns random ports, but if you're manually binding:
+
+1. **Stop local PostgreSQL:**
+   ```bash
+   # macOS
+   brew services stop postgresql
+   
+   # Linux
+   sudo systemctl stop postgresql
+   
+   # Windows
+   net stop postgresql-x64-14
+   ```
+
+2. **Find process using port:**
+   ```bash
+   # Linux/macOS
+   lsof -i :5432
+   kill -9 <PID>
+   
+   # Windows
+   netstat -ano | findstr :5432
+   taskkill /PID <PID> /F
+   ```
+
+<Note>
+Testcontainers uses random available ports by default, so port conflicts are rare unless you have custom configuration.
+</Note>
+
+## Container Cleanup Issues
+
+### Containers Not Stopping
+
+**Error Message:**
+```text
+Multiple containers running after generation
+```
+
+**Cause:**  
+The `stopPostgresContainer` task didn't execute properly.
+
+**Solution:**
+
+1. **Manual cleanup:**
+   ```bash
+   ./gradlew stopPostgresContainer
+   ```
+
+2. **Force stop all testcontainers:**
+   ```bash
+   docker ps | grep testcontainers | awk '{print $1}' | xargs docker stop
+   ```
+
+3. **Enable Ryuk (container cleanup):**
+   The plugin configures Ryuk in tests (**FlywayJooqConventionPlugin.kt:204**). Ensure it's not disabled:
+   ```kotlin
+   // Don't set this:
+   // environment("TESTCONTAINERS_RYUK_DISABLED", "true")
+   ```
+
+### Dangling Volumes
+
+**Issue:**  
+Disk space consumed by old container volumes.
+
+**Solution:**
+
+```bash
+# List volumes
+docker volume ls
+
+# Remove unused volumes
+docker volume prune
+
+# Remove all testcontainers volumes
+docker volume ls | grep testcontainers | awk '{print $2}' | xargs docker volume rm
+```
+
+## Build and Compilation Issues
+
+### Generated Code Not Found
+
+**Error Message:**
+```text
+Unresolved reference: Tables
+Unresolved reference: USERS
+```
+
+**Cause:**  
+Generated JOOQ code isn't in the source set.
+
+**Solution:**
+
+The plugin automatically adds generated sources (**FlywayJooqConventionPlugin.kt:187-192**), but verify:
+
+1. **Run generation:**
+   ```bash
+   ./gradlew generateJooq
+   ```
+
+2. **Check generated files exist:**
+   ```bash
+   ls -la build/generated-src/jooq/main/
+   ```
+
+3. **Refresh IDE:**
+   - **IntelliJ IDEA**: File → Invalidate Caches → Restart
+   - **Gradle sync**: Right-click project → Gradle → Refresh Gradle Project
+
+### Compilation Before Generation
+
+**Error Message:**
+```text
+Compilation fails because generated classes don't exist
+```
+
+**Cause:**  
+Kotlin compilation running before JOOQ generation.
+
+**Solution:**
+
+The plugin ensures correct task order (**FlywayJooqConventionPlugin.kt:182-184**):
+
+```kotlin
+tasks.named("compileKotlin") {
+    dependsOn("generateJooq")
+}
+```
+
+Verify no custom task configuration overrides this.
+
+## Performance Issues
+
+### Slow Generation
+
+**Issue:**  
+JOOQ generation takes several minutes.
+
+**Causes & Solutions:**
+
+1. **Large number of tables:**
+   - Exclude unnecessary tables:
+     ```kotlin
+     jooqConventions {
+         excludedTables = "flyway_schema_history|temp_.*|audit_.*"
+     }
+     ```
+
+2. **Container startup time:**
+   - Use lighter PostgreSQL image (already default: `16-alpine`)
+   - Ensure Docker has sufficient resources
+
+3. **Network issues:**
+   - Check Docker network configuration
+   - Ensure no VPN interference
+
+### Repeated Container Startup
+
+**Issue:**  
+Container starts multiple times during build.
+
+**Cause:**  
+Multiple tasks triggering `setupDatabaseForJooq`.
+
+**Solution:**
+
+```bash
+# Run specific task instead of build
+./gradlew generateJooq
+
+# Not:
+./gradlew clean build generateJooq  # Runs generation multiple times
+```
+
+## Getting Help
+
+### Enable Debug Logging
+
+```bash
+./gradlew generateJooq --info
+./gradlew generateJooq --debug
+```
+
+Look for:
+- Container startup messages (**FlywayJooqConventionPlugin.kt:53-66**)
+- Flyway migration output (**FlywayJooqConventionPlugin.kt:67-79**)
+- JOOQ configuration (**FlywayJooqConventionPlugin.kt:169-178**)
+
+### Check Plugin Version
+
+```kotlin
+// In build.gradle.kts
+plugins {
+    id("io.github.usmanzaheer1995.flyway-jooq-convention-plugin") version "1.0.9"
+}
+```
+
+Ensure you're using the latest version from [Maven Central](https://central.sonatype.com/artifact/io.github.usmanzaheer1995/flyway-jooq-convention-plugin).
+
+### Report Issues
+
+If you encounter a bug:
+
+1. **Check existing issues**: [GitHub Issues](https://github.com/usmanzaheer1995/flyway-jooq-convention/issues)
+2. **Provide details**:
+   - Plugin version
+   - Gradle version (`./gradlew --version`)
+   - Docker version (`docker --version`)
+   - Full error stack trace
+   - Minimal reproduction example
+
+## Common Error Patterns
+
+| Error Pattern | Likely Cause | Quick Fix |
+|--------------|--------------|----------|
+| `Could not find a valid Docker environment` | Docker not running | Start Docker |
+| `Migration checksum mismatch` | Modified existing migration | Create new migration |
+| `Unresolved reference: Tables` | Generation didn't run | `./gradlew generateJooq` |
+| `Connection refused` | Container not started | Check `setupDatabaseForJooq` ran |
+| `Port already allocated` | Conflicting service | Stop local PostgreSQL |
+| `0 migrations executed` | Wrong directory | Check `src/main/resources/db/migration` |
+| `SQL syntax error` | Invalid SQL in migration | Review migration file |
+| `Container exited with code 137` | Out of memory | Increase Docker memory |
+
+## Next Steps
+
+- Review [Migration Setup](/guides/migration-setup) for best practices
+- Understand [Custom Type Mappings](/guides/custom-types)
+- Check the [plugin source code](https://github.com/usmanzaheer1995/flyway-jooq-convention) for implementation details

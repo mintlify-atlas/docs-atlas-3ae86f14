@@ -1,0 +1,238 @@
+---
+title: Architecture
+description: Understand how the plugin integrates Kotlin, Flyway, JOOQ, and Testcontainers into a cohesive system
+---
+
+The Flyway-JOOQ Convention Plugin is designed as a Gradle plugin that orchestrates multiple build tools and manages infrastructure lifecycle. Understanding its architecture helps you customize and troubleshoot your setup.
+
+## Plugin composition
+
+The plugin applies three foundational Gradle plugins:
+
+```kotlin
+override fun apply(project: Project) {
+    project.run {
+        pluginManager.apply("org.jetbrains.kotlin.jvm")
+        pluginManager.apply("org.flywaydb.flyway")
+        pluginManager.apply("nu.studer.jooq")
+    }
+}
+```
+
+- **kotlin-jvm**: Provides Kotlin compilation and source set management
+- **flyway**: Enables database migration execution (used programmatically)
+- **jooq**: Provides the `generateJooq` task and configuration DSL
+
+By applying these plugins automatically, the convention plugin eliminates boilerplate from your `build.gradle.kts`.
+
+## Dependency management
+
+The plugin automatically adds all required dependencies:
+
+```kotlin
+dependencies.apply {
+    add("implementation", "org.jooq:jooq:${PluginVersions.JOOQ}")
+    add("implementation", "org.postgresql:postgresql:${PluginVersions.POSTGRES}")
+
+    add("jooqGenerator", "org.postgresql:postgresql:${PluginVersions.POSTGRES}")
+    add("jooqGenerator", "jakarta.xml.bind:jakarta.xml.bind-api:${PluginVersions.JAKARTA_XML}")
+
+    add("testImplementation", "org.testcontainers:postgresql:${PluginVersions.TESTCONTAINERS}")
+    add("testImplementation", "org.testcontainers:junit-jupiter:${PluginVersions.TESTCONTAINERS}")
+
+    add("implementation", "org.flywaydb:flyway-core:${PluginVersions.FLYWAY}")
+    add("implementation", "org.flywaydb:flyway-database-postgresql:${PluginVersions.FLYWAY}")
+}
+```
+
+Note the `jooqGenerator` configuration, which provides dependencies specifically for the code generation classpath—separate from your application runtime.
+
+## Extension configuration
+
+The plugin exposes a custom extension for user configuration:
+
+```kotlin
+val jooqConventions = extensions.create<JooqConventionsExtension>("jooqConventions")
+
+open class JooqConventionsExtension {
+    var databaseName: String = "testdb"
+    var username: String = "test"
+    var password: String = "test"
+    var postgresVersion: String = "16-alpine"
+    var inputSchema: String = "public"
+    var targetPackage: String = "com.example.jooq.generated"
+    var excludedTables: String = "flyway_schema_history"
+}
+```
+
+Users configure these values in their `build.gradle.kts`, and the plugin uses them to configure both Testcontainers and JOOQ.
+
+## JOOQ configuration
+
+The plugin configures the JOOQ extension in an `afterEvaluate` block to ensure user settings are available:
+
+```kotlin
+afterEvaluate {
+    configure<JooqExtension> {
+        version.set(PluginVersions.JOOQ)
+
+        configurations {
+            create("main").apply {
+                generateSchemaSourceOnCompilation.set(false)
+
+                jooqConfiguration.apply {
+                    logging = Logging.INFO
+
+                    jdbc.apply {
+                        driver = "org.postgresql.Driver"
+                        url = extra.properties["containerJdbcUrl"]?.toString()
+                            ?: "jdbc:postgresql://localhost:5432/${jooqConventions.databaseName}"
+                        user = extra.properties["containerUsername"]?.toString() ?: jooqConventions.username
+                        password = extra.properties["containerPassword"]?.toString() ?: jooqConventions.password
+                    }
+
+                    generator.apply {
+                        name = "org.jooq.codegen.KotlinGenerator"
+
+                        database.apply {
+                            name = "org.jooq.meta.postgres.PostgresDatabase"
+                            inputSchema = jooqConventions.inputSchema
+                            excludes = jooqConventions.excludedTables
+
+                            forcedTypes.addAll(
+                                listOf(
+                                    ForcedType().apply {
+                                        name = "varchar"
+                                        includeExpression = ".*"
+                                        includeTypes = "JSONB?"
+                                    },
+                                    ForcedType().apply {
+                                        name = "varchar"
+                                        includeExpression = ".*"
+                                        includeTypes = "INET"
+                                    },
+                                ),
+                            )
+                        }
+
+                        generate.apply {
+                            isDeprecated = false
+                            isRecords = true
+                            isImmutablePojos = true
+                            isFluentSetters = true
+                            isKotlinSetterJvmNameAnnotationsOnIsPrefix = true
+                            isKotlinNotNullPojoAttributes = true
+                            isKotlinNotNullRecordAttributes = true
+                            isKotlinNotNullInterfaceAttributes = true
+                        }
+
+                        target.apply {
+                            packageName = jooqConventions.targetPackage
+                            directory = "build/generated-src/jooq/main"
+                        }
+
+                        strategy.name = "org.jooq.codegen.DefaultGeneratorStrategy"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+Key architectural decisions:
+
+- **KotlinGenerator**: Generates Kotlin code instead of Java
+- **ForcedTypes**: Maps PostgreSQL-specific types (JSONB, INET) to String for broader compatibility
+- **Generation flags**: Enables immutable POJOs, records, and Kotlin null-safety annotations
+- **Excluded tables**: Filters out `flyway_schema_history` from generated code
+
+## Task registration and lifecycle
+
+The plugin registers two custom tasks and modifies existing ones:
+
+```kotlin
+val setupDatabaseForJooq = tasks.register("setupDatabaseForJooq") { /* ... */ }
+val stopPostgresContainer = tasks.register("stopPostgresContainer") { /* ... */ }
+
+afterEvaluate {
+    tasks.named("generateJooq") {
+        dependsOn(setupDatabaseForJooq)
+        finalizedBy(stopPostgresContainer)
+
+        doFirst {
+            if (containerJdbcUrl != null) {
+                println("Configuring jOOQ to use container: $containerJdbcUrl")
+
+                val jooqExt = project.extensions.getByType(JooqExtension::class.java)
+                jooqExt.configurations.getByName("main").jooqConfiguration.apply {
+                    jdbc.url = containerJdbcUrl
+                    jdbc.user = containerUsername
+                    jdbc.password = containerPassword
+                }
+            }
+        }
+    }
+
+    tasks.named("compileKotlin") {
+        dependsOn("generateJooq")
+    }
+}
+```
+
+This creates a dependency graph:
+- **compileKotlin** depends on **generateJooq**
+- **generateJooq** depends on **setupDatabaseForJooq** and is finalized by **stopPostgresContainer**
+
+The dynamic configuration in `doFirst` injects runtime container details into JOOQ's static configuration.
+
+## Container lifecycle management
+
+The plugin maintains container state as instance variables:
+
+```kotlin
+private var postgresContainer: PostgreSQLContainer<Nothing>? = null
+private var containerJdbcUrl: String? = null
+private var containerUsername: String? = null
+private var containerPassword: String? = null
+```
+
+These fields persist throughout the task execution, allowing:
+1. `setupDatabaseForJooq` to create and store the container
+2. `generateJooq` to read connection details
+3. `stopPostgresContainer` to clean up resources
+
+## Test configuration
+
+The plugin configures test tasks for Testcontainers:
+
+```kotlin
+tasks.withType<Test> {
+    useJUnitPlatform()
+
+    environment("TESTCONTAINERS_RYUK_DISABLED", "false")
+
+    testLogging {
+        events("passed", "skipped", "failed")
+        showStandardStreams = false
+    }
+}
+```
+
+This ensures Testcontainers' Ryuk container (which cleans up orphaned containers) remains enabled during tests.
+
+## Source set integration
+
+Generated code is automatically registered as a Kotlin source directory:
+
+```kotlin
+configure<KotlinProjectExtension> {
+    sourceSets {
+        getByName("main") {
+            kotlin.srcDir("build/generated-src/jooq/main")
+        }
+    }
+}
+```
+
+This makes generated classes visible to your application code without manual configuration.
